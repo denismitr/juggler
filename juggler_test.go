@@ -49,11 +49,11 @@ func TestAppendToExistingFile(t *testing.T) {
 
 	expectFileToContain(t, existingFile, entry)
 
-	l := New("test_log", dir)
-	defer l.Close()
+	j := New("test_log", dir)
+	defer j.Close()
 
 	nextEntry := []byte("nextEntry\n")
-	n, err := l.Write(nextEntry)
+	n, err := j.Write(nextEntry)
 
 	assert.NoError(t, err)
 	assert.Equal(t, n, len(nextEntry))
@@ -77,12 +77,12 @@ func TestJugglingDuringWrite(t *testing.T) {
 
 	expectFileToContain(t, existingFile, entry)
 
-	l := New("test_log", dir, WithMaxMegabytes(17))
-	defer l.Close()
+	j := New("test_log", dir, WithMaxMegabytes(17))
+	defer j.Close()
 
-	nextFile := filepath.Join(dir, fmt.Sprintf("test_log-%s-2.log", now.Format(logFileSuffix)))
+	nextFile := filepath.Join(dir, fmt.Sprintf("test_log-%s.2.log", now.Format(logFileSuffix)))
 	nextEntry := []byte("next log too big")
-	n, err := l.Write(nextEntry)
+	n, err := j.Write(nextEntry)
 	assert.NoError(t, err)
 	assert.Equal(t, len(nextEntry), n)
 	expectFileToContain(t, nextFile, nextEntry)

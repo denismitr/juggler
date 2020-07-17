@@ -21,3 +21,9 @@ func WithMaxBackups(backups int) Configurator {
 		j.backupDays = backups
 	}
 }
+
+func WithCompression() Configurator {
+	return func(j *Juggler) {
+		j.compression = true
+	}
+}

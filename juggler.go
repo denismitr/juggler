@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"sync"
 	"time"
 )
@@ -18,6 +21,10 @@ const (
 
 var _ io.WriteCloser = (*Juggler)(nil)
 
+var createFormat = func(prefix string) *regexp.Regexp {
+	return regexp.MustCompile(`-(?P<date>\d{4}-\d{2}-\d{2}).log$`)
+}
+
 var (
 	currentTime = time.Now
 	osStat      = os.Stat
@@ -25,20 +32,24 @@ var (
 )
 
 type Juggler struct {
-	filename  string
-	version   int
-	directory string
-
+	filename       string
+	directory      string
 	filenamePrefix string
+
+	runChecksEvery time.Duration
 	maxMegabytes   int
 	backupDays     int
 	timezone       *time.Location
 	compression    bool
 
+	closeCh chan struct{}
+	format  *regexp.Regexp
+
 	cmu         sync.Mutex
 	currentSize int64
 	currentTime time.Time
 	currentFile *os.File
+	version     int
 }
 
 func New(filenamePrefix string, dir string, cfgs ...Configurator) *Juggler {
@@ -48,13 +59,18 @@ func New(filenamePrefix string, dir string, cfgs ...Configurator) *Juggler {
 		version:        1,
 		maxMegabytes:   defaultMaxMegabytes,
 		backupDays:     5,
+		closeCh:        make(chan struct{}),
+		runChecksEvery: 5 * time.Second,
 		timezone:       time.UTC,
 		compression:    false,
+		format:         createFormat(filenamePrefix),
 	}
 
 	for i := range cfgs {
 		cfgs[i](j)
 	}
+
+	go j.watcher()
 
 	j.updateFilename()
 
@@ -148,7 +164,7 @@ func (j *Juggler) updateFilename() {
 	if j.version == 1 {
 		j.filename = filepath.Join(j.directory, fmt.Sprintf("%s-%s%s", j.filenamePrefix, date, defaultExt))
 	} else {
-		j.filename = filepath.Join(j.directory, fmt.Sprintf("%s-%s-%d%s", j.filenamePrefix, date, j.version, defaultExt))
+		j.filename = filepath.Join(j.directory, fmt.Sprintf("%s-%s.%d%s", j.filenamePrefix, date, j.version, defaultExt))
 	}
 }
 
@@ -188,6 +204,72 @@ func (j *Juggler) close() error {
 	return nil
 }
 
+func (j *Juggler) watcher() {
+	if j.backupDays == 0 && j.compression == false {
+		return
+	}
+
+	tick := time.NewTicker(j.runChecksEvery)
+	runCheck := make(chan struct{})
+
+	go j.checkCompression(runCheck)
+
+loop:
+	for {
+		select {
+		case <-tick.C:
+			runCheck <- struct{}{}
+		case <-j.closeCh:
+			close(runCheck)
+			break loop
+		}
+	}
+
+	tick.Stop()
+}
+
+func (j *Juggler) checkCompression(runCheck <-chan struct{}) {
+	for range runCheck {
+		files, err := j.inactiveLogFiles()
+		if err != nil {
+			panic(err) // todo: remove
+		}
+
+		for _, f := range files {
+			if err := compress(f.f.Name()); err != nil {
+				panic(err) // todo: remove
+			}
+		}
+	}
+}
+
+func (j *Juggler) inactiveLogFiles() ([]logFile, error) {
+	if j.directory == "" {
+		return nil, errors.Errorf("Directory is not set")
+	}
+
+	files, err := ioutil.ReadDir(j.directory)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []logFile
+
+	for i := range files {
+		if files[i].IsDir() {
+			continue
+		}
+
+		if logFile, ok := parseFile(files[i], j.filenamePrefix, j.format, j.timezone); ok {
+			result = append(result, logFile)
+		}
+	}
+
+	sort.Sort(orderedLogFiles(result))
+
+	return result, nil
+}
+
 func (j *Juggler) Close() error {
 	j.cmu.Lock()
 	defer func() {
@@ -199,6 +281,8 @@ func (j *Juggler) Close() error {
 	if j.currentFile != nil {
 		return j.currentFile.Close()
 	}
+
+	close(j.closeCh)
 
 	return nil
 }
