@@ -56,7 +56,7 @@ func parseFile(f os.FileInfo, prefix string, format *regexp.Regexp, tz *time.Loc
 	}
 
 	for i, name := range format.SubexpNames() {
-		if i != 0 && name != "version" && matches[i] != "" {
+		if i != 0 && name == "version" && matches[i] != "" {
 			v, _ := strconv.Atoi(matches[i])
 			if v != 0 {
 				result.version = v

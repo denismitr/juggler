@@ -22,7 +22,7 @@ const (
 var _ io.WriteCloser = (*Juggler)(nil)
 
 var createFormat = func(prefix string) *regexp.Regexp {
-	return regexp.MustCompile(`-(?P<date>\d{4}-\d{2}-\d{2}).log$`)
+	return regexp.MustCompile("^" + prefix + `-(?P<date>\d{4}-\d{2}-\d{2})\.?(?P<version>\d{0,4})\.log$`)
 }
 
 var (
