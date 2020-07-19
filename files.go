@@ -4,22 +4,24 @@ import (
 	"compress/gzip"
 	"github.com/pkg/errors"
 	"io"
+	"io/ioutil"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 )
 
-type logFile struct {
+type lofFileMeta struct {
 	daysAgo int
 	version int
 	f os.FileInfo
 }
 
-type orderedLogFiles []logFile
+type orderedLogFilesMeta []lofFileMeta
 
-func (f orderedLogFiles) Less(i, j int) bool {
+func (f orderedLogFilesMeta) Less(i, j int) bool {
 	if f[i].daysAgo < f[j].daysAgo {
 		return true
 	}
@@ -31,28 +33,28 @@ func (f orderedLogFiles) Less(i, j int) bool {
 	return false
 }
 
-func (f orderedLogFiles) Swap(i, j int) {
+func (f orderedLogFilesMeta) Swap(i, j int) {
 	f[i], f[j] = f[j], f[i]
 }
 
-func (f orderedLogFiles) Len() int {
+func (f orderedLogFilesMeta) Len() int {
 	return len(f)
 }
 
-func parseFile(f os.FileInfo, prefix string, format *regexp.Regexp, tz *time.Location) (logFile, bool) {
+func parseLogFileMeta(f os.FileInfo, prefix string, format *regexp.Regexp, tz *time.Location) (lofFileMeta, bool) {
 	if ! strings.HasSuffix(f.Name(), ".log") {
-		return logFile{}, false
+		return lofFileMeta{}, false
 	}
 
 	if ! strings.HasPrefix(f.Name(), prefix) {
-		return logFile{}, false
+		return lofFileMeta{}, false
 	}
 
 	matches := format.FindStringSubmatch(f.Name())
-	result := logFile{f: f}
+	result := lofFileMeta{f: f}
 
 	if len(matches) == 0 {
-		return logFile{}, false
+		return lofFileMeta{}, false
 	}
 
 	for i, name := range format.SubexpNames() {
@@ -64,17 +66,59 @@ func parseFile(f os.FileInfo, prefix string, format *regexp.Regexp, tz *time.Loc
 		}
 
 		if i != 0 && name == "date" && matches[i] != "" {
-			t, err := time.Parse(logFileSuffix, matches[i])
+			days, err := parseDayDiff(matches[i], tz)
 			if err != nil {
 				panic(err) // todo: remove
 			}
-
-			now := time.Now().In(tz)
-			result.daysAgo = int(now.Sub(t).Hours() / 24)
+			result.daysAgo = days
 		}
 	}
 
 	return result, true
+}
+
+func parseDayDiff(date string, tz *time.Location) (days int, err error) {
+	t, err := time.Parse(logFileSuffix, date)
+	if err != nil {
+		err = errors.Wrapf(err, "could not parse date %s", date)
+		return
+	}
+
+	now := currentTime().In(tz)
+	days = int(now.Sub(t).Hours() / 24)
+
+	return
+}
+
+func scanBackups(
+	dir, prefix string,
+	format *regexp.Regexp,
+	tz *time.Location,
+) ([]lofFileMeta, error) {
+	if dir == "" {
+		return nil, errors.Errorf("Directory is not set")
+	}
+
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return nil, errors.Wrapf(err, "could not read directory [%s] content", dir)
+	}
+
+	var result []lofFileMeta
+
+	for i := range files {
+		if files[i].IsDir() {
+			continue
+		}
+
+		if logFile, ok := parseLogFileMeta(files[i], prefix, format, tz); ok {
+			result = append(result, logFile)
+		}
+	}
+
+	sort.Sort(orderedLogFilesMeta(result))
+
+	return result, nil
 }
 
 func compress(file string) error {

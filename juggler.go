@@ -4,11 +4,9 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"sync"
 	"time"
 )
@@ -230,7 +228,7 @@ loop:
 
 func (j *Juggler) checkCompression(runCheck <-chan struct{}) {
 	for range runCheck {
-		files, err := j.inactiveLogFiles()
+		files, err := scanBackups(j.directory, j.filenamePrefix, j.format, j.timezone)
 		if err != nil {
 			panic(err) // todo: remove
 		}
@@ -241,33 +239,6 @@ func (j *Juggler) checkCompression(runCheck <-chan struct{}) {
 			}
 		}
 	}
-}
-
-func (j *Juggler) inactiveLogFiles() ([]logFile, error) {
-	if j.directory == "" {
-		return nil, errors.Errorf("Directory is not set")
-	}
-
-	files, err := ioutil.ReadDir(j.directory)
-	if err != nil {
-		return nil, err
-	}
-
-	var result []logFile
-
-	for i := range files {
-		if files[i].IsDir() {
-			continue
-		}
-
-		if logFile, ok := parseFile(files[i], j.filenamePrefix, j.format, j.timezone); ok {
-			result = append(result, logFile)
-		}
-	}
-
-	sort.Sort(orderedLogFiles(result))
-
-	return result, nil
 }
 
 func (j *Juggler) Close() error {
