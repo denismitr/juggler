@@ -87,24 +87,3 @@ func TestJugglingDuringWrite(t *testing.T) {
 	assert.Equal(t, len(nextEntry), n)
 	expectFileToContain(t, nextFile, nextEntry)
 }
-
-func expectFileToContain(t *testing.T, file string, content []byte) {
-	b, err := ioutil.ReadFile(file)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	assert.Equal(t, b, content)
-}
-
-func makeTestDir(name string, tb testing.TB) string {
-	dir := filepath.Join(os.TempDir(), name)
-	if err := os.Mkdir(dir, 0700); err != nil {
-		if os.IsExist(err) {
-			tb.Logf("Already exists %s", dir)
-		} else {
-			panic(err)
-		}
-	}
-	return dir
-}

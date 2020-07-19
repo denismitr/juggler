@@ -2,6 +2,7 @@ package juggler
 
 import (
 	"compress/gzip"
+	"fmt"
 	"github.com/pkg/errors"
 	"io"
 	"io/ioutil"
@@ -10,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -39,6 +41,10 @@ func (f orderedLogFilesMeta) Swap(i, j int) {
 
 func (f orderedLogFilesMeta) Len() int {
 	return len(f)
+}
+
+func gzippedName(file string) string {
+	return file + ".gz"
 }
 
 func parseLogFileMeta(f os.FileInfo, prefix string, format *regexp.Regexp, tz *time.Location) (lofFileMeta, bool) {
@@ -121,41 +127,58 @@ func scanBackups(
 	return result, nil
 }
 
-func compress(file string) error {
-	f, err := os.Open(file)
+func compress(src string, wg *sync.WaitGroup, errCh chan error) {
+	defer wg.Done()
+	f, err := os.Open(src)
 	if err != nil {
-		return errors.Wrapf(err, "failed to open log file: %s", file)
-	}
-
-	defer f.Close()
-
-	stats, err := osStat(file)
-	if err != nil {
-		return errors.Wrapf(err, "failed to read stats from file %s", file)
-	}
-
-	dst := file + ".gz"
-
-	gzf, err := os.OpenFile(dst, os.O_APPEND | os.O_TRUNC | os.O_WRONLY, stats.Mode())
-	if err != nil {
-		return errors.Wrapf(err, "failed to create file %s", dst)
+		errCh <- errors.Wrapf(err, "failed to open log file: %s", src)
+		return
 	}
 
 	defer func() {
-		os.Remove(file)
-		gzf.Close()
-		os.Remove(dst)
+		if err := f.Close(); err != nil {
+			errCh <- err
+		}
 	}()
+
+	fi, err := osStat(src)
+	if err != nil {
+		errCh <- errors.Wrapf(err, "failed to read stats from file %s", src)
+		return
+	}
+
+	dst := gzippedName(src)
+
+	gzf, err := os.OpenFile(dst, os.O_CREATE | os.O_TRUNC | os.O_WRONLY, fi.Mode())
+	if err != nil {
+		errCh <- errors.Wrapf(err, "failed to create file %s", dst)
+		return
+	}
+
+	defer func() {
+		if err := os.Remove(src); err != nil {
+			errCh <- err
+		}
+
+		if err := gzf.Close(); err != nil {
+			errCh <- err
+		}
+	}()
+
+	if err := chown(dst, fi); err != nil {
+		errCh <- fmt.Errorf("failed to chown compressed log file: %v", err)
+		return
+	}
 
 	gz := gzip.NewWriter(gzf)
 
 	if _, err := io.Copy(gz, f); err != nil {
-		return errors.Wrapf(err, "could not copy compressed content from %s to %s", file, dst)
+		errCh <- errors.Wrapf(err, "could not copy compressed content from %s to %s", src, dst)
+		return
 	}
 
 	if err := gz.Close(); err != nil {
-		return err
+		errCh <- err
+		return
 	}
-
-	return nil
 }

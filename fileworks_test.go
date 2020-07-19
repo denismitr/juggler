@@ -1,11 +1,15 @@
 package juggler
 
 import (
+	"bytes"
+	"compress/gzip"
 	"fmt"
 	"github.com/stretchr/testify/assert"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -209,5 +213,63 @@ func TestScanBackups(t *testing.T) {
 		for _, lf := range lfs {
 			assert.Equal(t, 0, lf.version)
 		}
+	})
+}
+
+func TestCompression(t *testing.T) {
+	t.Run("compress log file", func(t *testing.T) {
+		prefix := "test_log"
+		content := "uncompressed fake - log - content"
+		uf := uncompressedIdenticalTestFileFactory(prefix, content)
+
+		dir, err := createTestDir("test_dir")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		defer os.RemoveAll(dir)
+
+		file, err := createFakeLogFile(dir, uf("2019-05-22", 0))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		expectFileToContain(t, file, []byte(content))
+
+		var wg sync.WaitGroup
+		errCh := make(chan error, 10)
+
+		wg.Add(1)
+		go compress(file, &wg, errCh)
+		wg.Wait()
+
+		select {
+			case err := <-errCh:
+				t.Fatal(err)
+			default:
+				break
+		}
+
+		f, err := os.Open(file + ".gz")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		defer f.Close()
+
+		gz, err := gzip.NewReader(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var b bytes.Buffer
+
+		if _, err := io.Copy(&b, gz); err != nil {
+			t.Fatal(err)
+		}
+
+		assert.Equal(t, content, b.String())
+		assert.NoFileExists(t, file, "old file must be deleted after compression")
+		assert.FileExists(t, gzippedName(file), "compressed file must be created")
 	})
 }
