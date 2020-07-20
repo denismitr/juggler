@@ -34,7 +34,6 @@ type Juggler struct {
 	directory      string
 	filenamePrefix string
 
-	runChecksEvery time.Duration
 	maxMegabytes   int
 	backupDays     int
 	timezone       *time.Location
@@ -42,6 +41,7 @@ type Juggler struct {
 
 	closeCh chan struct{}
 	errCh   chan error
+	nextTick time.Duration
 	format  *regexp.Regexp
 
 	cmu         sync.Mutex
@@ -60,7 +60,7 @@ func New(filenamePrefix string, dir string, cfgs ...Configurator) *Juggler {
 		backupDays:     5,
 		closeCh:        make(chan struct{}),
 		errCh:          make(chan error),
-		runChecksEvery: 5 * time.Second,
+		nextTick: 5 * time.Second,
 		timezone:       time.UTC,
 		compression:    false,
 		format:         createFormat(filenamePrefix),
@@ -209,7 +209,7 @@ func (j *Juggler) watcher() {
 		return
 	}
 
-	tick := time.NewTicker(j.runChecksEvery)
+	tick := time.NewTicker(j.nextTick)
 	runCheck := make(chan struct{})
 
 	go j.checkCompression(runCheck, j.errCh)
@@ -222,6 +222,8 @@ loop:
 		case <-j.closeCh:
 			close(runCheck)
 			break loop
+		case _ = <-j.errCh:
+			//panic(err)
 		}
 	}
 
@@ -240,7 +242,7 @@ func (j *Juggler) checkCompression(runCheck <-chan struct{}, errCh chan error) {
 
 		for _, f := range files {
 			wg.Add(1)
-			go compress(f.f.Name(), &wg, errCh)
+			go compress(f.fullPath(), &wg, errCh)
 		}
 
 		wg.Wait()

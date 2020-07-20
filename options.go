@@ -27,3 +27,9 @@ func WithCompression() Configurator {
 		j.compression = true
 	}
 }
+
+func WithNextTick(nextTick time.Duration) Configurator {
+	return func(j *Juggler) {
+		j.nextTick = nextTick
+	}
+}

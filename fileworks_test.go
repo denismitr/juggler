@@ -71,7 +71,7 @@ func TestParseLogFileMeta(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			lf, ok := parseLogFileMeta(fi, tc.prefix, createFormat(tc.prefix), time.UTC)
+			lf, ok := parseLogFileMeta(dir, fi, tc.prefix, createFormat(tc.prefix), time.UTC)
 
 			assert.True(t, ok, "regex could not match filename")
 			assert.Equal(t, tc.version, lf.version)
@@ -162,10 +162,10 @@ func TestScanBackups(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.Equal(t, 4, len(lfs), "expected exactly 4 backups found")
-		assert.Equal(t, 8, lfs[3].daysAgo)
-		assert.Equal(t, 7, lfs[2].daysAgo)
-		assert.Equal(t, 5, lfs[1].daysAgo)
-		assert.Equal(t, 1, lfs[0].daysAgo)
+		assert.Equal(t, 8, lfs[0].daysAgo)
+		assert.Equal(t, 7, lfs[1].daysAgo)
+		assert.Equal(t, 5, lfs[2].daysAgo)
+		assert.Equal(t, 1, lfs[3].daysAgo)
 
 		for _, lf := range lfs {
 			assert.Equal(t, 0, lf.version)
@@ -206,9 +206,9 @@ func TestScanBackups(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.Equal(t, 3, len(lfs), "expected exactly 4 backups found")
-		assert.Equal(t, 7, lfs[2].daysAgo)
+		assert.Equal(t, 7, lfs[0].daysAgo)
 		assert.Equal(t, 5, lfs[1].daysAgo)
-		assert.Equal(t, 1, lfs[0].daysAgo)
+		assert.Equal(t, 1, lfs[2].daysAgo)
 
 		for _, lf := range lfs {
 			assert.Equal(t, 0, lf.version)

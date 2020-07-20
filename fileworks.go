@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -18,13 +19,18 @@ import (
 type lofFileMeta struct {
 	daysAgo int
 	version int
+	dir string
 	f os.FileInfo
+}
+
+func (f lofFileMeta) fullPath() string {
+	return filepath.Join(f.dir, f.f.Name())
 }
 
 type orderedLogFilesMeta []lofFileMeta
 
 func (f orderedLogFilesMeta) Less(i, j int) bool {
-	if f[i].daysAgo < f[j].daysAgo {
+	if f[i].daysAgo > f[j].daysAgo {
 		return true
 	}
 
@@ -47,7 +53,7 @@ func gzippedName(file string) string {
 	return file + ".gz"
 }
 
-func parseLogFileMeta(f os.FileInfo, prefix string, format *regexp.Regexp, tz *time.Location) (lofFileMeta, bool) {
+func parseLogFileMeta(dir string, f os.FileInfo, prefix string, format *regexp.Regexp, tz *time.Location) (lofFileMeta, bool) {
 	if ! strings.HasSuffix(f.Name(), ".log") {
 		return lofFileMeta{}, false
 	}
@@ -57,7 +63,7 @@ func parseLogFileMeta(f os.FileInfo, prefix string, format *regexp.Regexp, tz *t
 	}
 
 	matches := format.FindStringSubmatch(f.Name())
-	result := lofFileMeta{f: f}
+	result := lofFileMeta{f: f, dir: dir}
 
 	if len(matches) == 0 {
 		return lofFileMeta{}, false
@@ -117,12 +123,17 @@ func scanBackups(
 			continue
 		}
 
-		if logFile, ok := parseLogFileMeta(files[i], prefix, format, tz); ok {
+		if logFile, ok := parseLogFileMeta(dir, files[i], prefix, format, tz); ok {
 			result = append(result, logFile)
 		}
 	}
 
 	sort.Sort(orderedLogFilesMeta(result))
+
+	// if last entry is today exclude it from backup list
+	if len(result) > 0 && result[len(result) - 1].daysAgo == 0 {
+		result = result[:len(result) - 1]
+	}
 
 	return result, nil
 }
