@@ -130,7 +130,7 @@ func scanBackups(
 
 	sort.Sort(orderedLogFilesMeta(result))
 
-	// if last entry is today exclude it from backup list
+	// if last entry is today exclude it from storage list
 	if len(result) > 0 && result[len(result) - 1].daysAgo == 0 {
 		result = result[:len(result) - 1]
 	}
@@ -138,7 +138,7 @@ func scanBackups(
 	return result, nil
 }
 
-func compress(src string, wg *sync.WaitGroup, errCh chan error) {
+func compress(src string, wg *sync.WaitGroup, errCh chan<- error, nextCh chan string) {
 	defer wg.Done()
 	f, err := os.Open(src)
 	if err != nil {
@@ -191,5 +191,9 @@ func compress(src string, wg *sync.WaitGroup, errCh chan error) {
 	if err := gz.Close(); err != nil {
 		errCh <- err
 		return
+	}
+
+	if nextCh != nil {
+		nextCh <- dst
 	}
 }

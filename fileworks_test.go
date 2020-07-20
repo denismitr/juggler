@@ -132,7 +132,7 @@ func TestParseDiffInDays(t *testing.T) {
 }
 
 func TestScanBackups(t *testing.T) {
-	t.Run("uncompressed fake backup log files", func(t *testing.T) {
+	t.Run("uncompressed fake storage log files", func(t *testing.T) {
 		prefix := "test_log"
 		f := uncompressedIdenticalTestFileFactory(prefix, "fake - log - content")
 
@@ -172,7 +172,7 @@ func TestScanBackups(t *testing.T) {
 		}
 	})
 
-	t.Run("some compressed and uncompressed fake backup log files", func(t *testing.T) {
+	t.Run("some compressed and uncompressed fake storage log files", func(t *testing.T) {
 		prefix := "test_log"
 		uf := uncompressedIdenticalTestFileFactory(prefix, "uncompressed fake - log - content")
 		cf := compressedIdenticalTestFileFactory(prefix, "compressed fake - log - content")
@@ -240,7 +240,7 @@ func TestCompression(t *testing.T) {
 		errCh := make(chan error, 10)
 
 		wg.Add(1)
-		go compress(file, &wg, errCh)
+		go compress(file, &wg, errCh, nil)
 		wg.Wait()
 
 		select {

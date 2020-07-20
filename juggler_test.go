@@ -116,10 +116,10 @@ func TestCompressAfterJuggle(t *testing.T) {
 		return t
 	}
 
-	j := New(prefix, dir, WithMaxMegabytes(17), WithNextTick(500 * time.Millisecond))
+	j := New(prefix, dir, WithCompression(), WithMaxMegabytes(17), WithNextTick(500 * time.Millisecond))
 	defer j.Close()
 
-	prevFile := filepath.Join(dir, fmt.Sprintf("%s-%s.log", prefix, "2018-01-25"))
+	prevFile := filepath.Join(dir, fmt.Sprintf("%s-%s.log", prefix, "2018-01-29"))
 	nextFile := filepath.Join(dir, fmt.Sprintf("%s-%s.2.log", prefix, "2018-01-29"))
 	nextEntry := []byte("next log too big")
 	n, err := j.Write(nextEntry)
@@ -131,6 +131,14 @@ func TestCompressAfterJuggle(t *testing.T) {
 
 	<-time.After(1 * time.Second)
 
+	assert.FileExists(t, gzippedName(prevFile))
+	assert.NoFileExists(t, prevFile)
+
+	prevFile = filepath.Join(dir, fmt.Sprintf("%s-%s.log", prefix, "2018-01-25"))
+	assert.FileExists(t, gzippedName(prevFile))
+	assert.NoFileExists(t, prevFile)
+
+	prevFile = filepath.Join(dir, fmt.Sprintf("%s-%s.log", prefix, "2018-01-23"))
 	assert.FileExists(t, gzippedName(prevFile))
 	assert.NoFileExists(t, prevFile)
 }

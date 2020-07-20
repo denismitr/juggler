@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -30,47 +31,47 @@ var (
 )
 
 type Juggler struct {
-	filename       string
-	directory      string
-	filenamePrefix string
+	filename  string
+	directory string
+	prefix    string
 
-	maxMegabytes   int
-	backupDays     int
-	timezone       *time.Location
-	compression    bool
+	maxMegabytes int
+	backupDays   int
+	timezone     *time.Location
+	compression  bool
 
-	closeCh chan struct{}
-	errCh   chan error
+	closeCh  chan struct{}
+	errCh    chan error
 	nextTick time.Duration
-	format  *regexp.Regexp
+	format   *regexp.Regexp
 
 	cmu         sync.Mutex
 	currentSize int64
 	currentTime time.Time
 	currentFile *os.File
-	version     int
+	currentVersion     int
 }
 
-func New(filenamePrefix string, dir string, cfgs ...Configurator) *Juggler {
+func New(prefix string, dir string, cfgs ...Configurator) *Juggler {
 	j := &Juggler{
-		filenamePrefix: filenamePrefix,
-		directory:      dir,
-		version:        1,
-		maxMegabytes:   defaultMaxMegabytes,
-		backupDays:     5,
-		closeCh:        make(chan struct{}),
-		errCh:          make(chan error),
-		nextTick: 5 * time.Second,
-		timezone:       time.UTC,
-		compression:    false,
-		format:         createFormat(filenamePrefix),
+		prefix:       prefix,
+		directory:    dir,
+		currentVersion:      1, // fixme
+		maxMegabytes: defaultMaxMegabytes,
+		backupDays:   5,
+		closeCh:      make(chan struct{}),
+		errCh:        make(chan error),
+		nextTick:     5 * time.Second,
+		timezone:     time.UTC,
+		compression:  false,
+		format:       createFormat(prefix),
 	}
 
 	for i := range cfgs {
 		cfgs[i](j)
 	}
 
-	go j.watcher()
+	go j.watch()
 
 	j.updateFilename()
 
@@ -161,10 +162,10 @@ func (j *Juggler) updateFilename() {
 
 	date := t.Format(logFileSuffix)
 
-	if j.version == 1 {
-		j.filename = filepath.Join(j.directory, fmt.Sprintf("%s-%s%s", j.filenamePrefix, date, defaultExt))
+	if j.currentVersion == 1 {
+		j.filename = filepath.Join(j.directory, fmt.Sprintf("%s-%s%s", j.prefix, date, defaultExt))
 	} else {
-		j.filename = filepath.Join(j.directory, fmt.Sprintf("%s-%s.%d%s", j.filenamePrefix, date, j.version, defaultExt))
+		j.filename = filepath.Join(j.directory, fmt.Sprintf("%s-%s.%d%s", j.prefix, date, j.currentVersion, defaultExt))
 	}
 }
 
@@ -174,9 +175,9 @@ func (j *Juggler) maxSize() int64 {
 
 func (j *Juggler) juggle(newVersion bool) error {
 	if newVersion {
-		j.version += 1
+		j.currentVersion += 1
 	} else {
-		j.version = 1
+		j.currentVersion = 1
 	}
 
 	if err := j.close(); err != nil {
@@ -204,48 +205,64 @@ func (j *Juggler) close() error {
 	return nil
 }
 
-func (j *Juggler) watcher() {
-	if j.backupDays == 0 && j.compression == false {
-		return
-	}
-
+func (j *Juggler) watch() {
 	tick := time.NewTicker(j.nextTick)
-	runCheck := make(chan struct{})
+	backupRunCh := make(chan struct{})
 
-	go j.checkCompression(runCheck, j.errCh)
+	storage := j.createStorage()
+
+	go storage.start(backupRunCh, j.errCh)
 
 loop:
 	for {
 		select {
 		case <-tick.C:
-			runCheck <- struct{}{}
+			backupRunCh <- struct{}{}
 		case <-j.closeCh:
-			close(runCheck)
+			close(backupRunCh)
 			break loop
-		case _ = <-j.errCh:
-			//panic(err)
+		case err := <-j.errCh:
+			log.Println(err)
 		}
 	}
 
 	tick.Stop()
 }
 
-func (j *Juggler) checkCompression(runCheck <-chan struct{}, errCh chan error) {
+func (j *Juggler) createStorage() storage {
+	if j.compression {
+		return newLocalCompression(j.directory, j.prefix, j.format, j.timezone)
+	}
+
+	return &nullStorage{}
+}
+
+func (j *Juggler) checkCompression(runCheck <-chan struct{}) {
 	for range runCheck {
 		var wg sync.WaitGroup
 
-		files, err := scanBackups(j.directory, j.filenamePrefix, j.format, j.timezone)
+		files, err := scanBackups(j.directory, j.prefix, j.format, j.timezone)
 		if err != nil {
-			errCh <- err
+			j.errCh <- err
 			continue
 		}
 
+		nextCh := make(chan string, len(files))
+
 		for _, f := range files {
 			wg.Add(1)
-			go compress(f.fullPath(), &wg, errCh)
+			go compress(f.fullPath(), &wg, j.errCh, nil)
 		}
 
+		// do not wait for this one
+		go func() {
+			for f := range nextCh {
+				fmt.Println(f)
+			}
+		}()
+
 		wg.Wait()
+		close(nextCh)
 	}
 }
 
