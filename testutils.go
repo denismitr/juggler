@@ -65,13 +65,7 @@ func createFakeLogFiles(dirName string, tfs ...testLogFile) (func(), string, err
 }
 
 func createFakeLogFile(dir string, tf testLogFile) (string, error) {
-	var f string
-
-	if tf.version == 0 {
-		f = filepath.Join(dir, fmt.Sprintf("%s-%s.log", tf.prefix, tf.date))
-	} else {
-		f = filepath.Join(dir, fmt.Sprintf("%s-%s.%d.log", tf.prefix, tf.date, tf.version))
-	}
+	f := filepath.Join(dir, fmt.Sprintf("%s-%s.%d.log", tf.prefix, tf.date, tf.version))
 
 	if tf.compressed {
 		f = gzippedName(f)
@@ -117,4 +111,20 @@ func makeTestDir(name string, tb testing.TB) string {
 		}
 	}
 	return dir
+}
+
+func parseTime(layout, value string) time.Time {
+	t, err := time.Parse(layout, value)
+	if err != nil {
+		panic(err)
+	}
+	return t
+}
+
+func parseLocation(tz string) *time.Location {
+	l, err := time.LoadLocation(tz)
+	if err != nil {
+		panic(err)
+	}
+	return l
 }

@@ -197,3 +197,15 @@ func compress(src string, wg *sync.WaitGroup, errCh chan<- error, nextCh chan st
 		nextCh <- dst
 	}
 }
+
+func resolveFilepath(prefix, dir string, currentTime time.Time, currentVersion int, tz *time.Location) string {
+	if tz != nil {
+		currentTime = currentTime.In(tz)
+	} else {
+		currentTime = currentTime.UTC()
+	}
+
+	date := currentTime.Format(logFileSuffix)
+
+	return filepath.Join(dir, fmt.Sprintf("%s-%s.%d%s", prefix, date, currentVersion, defaultExt))
+}

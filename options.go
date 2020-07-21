@@ -6,7 +6,7 @@ type Configurator func(j *Juggler)
 
 func WithMaxMegabytes(maxMegabytes int) Configurator {
 	return func(j *Juggler) {
-		j.maxMegabytes = maxMegabytes
+		j.maxFilesize = maxMegabytes
 	}
 }
 

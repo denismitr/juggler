@@ -30,9 +30,9 @@ func TestParseLogFileMeta(t *testing.T) {
 			dirName: "create_new_file_test",
 			ago:     -48 * time.Hour,
 			existingFile: func(dir, prefix string, now time.Time, version int) string {
-				return filepath.Join(dir, fmt.Sprintf("test_log-%s.log", now.Format(logFileSuffix)))
+				return filepath.Join(dir, fmt.Sprintf("test_log-%s.1.log", now.Format(logFileSuffix)))
 			},
-			version: 0,
+			version: 1,
 			daysAgo: 2,
 			prefix:  "test_log",
 			err:     nil,
@@ -272,4 +272,47 @@ func TestCompression(t *testing.T) {
 		assert.NoFileExists(t, file, "old file must be deleted after compression")
 		assert.FileExists(t, gzippedName(file), "compressed file must be created")
 	})
+}
+
+func TestResolveFilepath(t *testing.T) {
+	tt := []struct{
+	    expected string
+		prefix string
+	    dir string
+	    currentTime time.Time
+	    tz *time.Location
+	    currentVersion int
+	}{
+	    {
+	        expected: "/tmp/logs/test_log-2018-01-30.1.log",
+	        prefix: "test_log",
+	        dir: "/tmp/logs",
+	        currentTime: parseTime(logFileSuffix, "2018-01-30"),
+	        currentVersion: 1,
+	        tz: nil,
+	    },
+		{
+			expected: "/tmp/logs/test_log-2018-01-30.2.log",
+			prefix: "test_log",
+			dir: "/tmp/logs",
+			currentTime: parseTime(logFileSuffix, "2018-01-30"),
+			currentVersion: 2,
+			tz: nil,
+		},
+		{
+			expected: "/tmp/logs/test_log-2018-01-30.2.log",
+			prefix: "test_log",
+			dir: "/tmp/logs",
+			currentTime: parseTime(logFileSuffix, "2018-01-30"),
+			currentVersion: 2,
+			tz: parseLocation("Europe/Moscow"),
+		},
+	}
+
+	for _, tc := range tt {
+	    t.Run(tc.expected, func(t *testing.T) {
+			filepath := resolveFilepath(tc.prefix, tc.dir, tc.currentTime, tc.currentVersion, tc.tz)
+			assert.Equal(t, tc.expected, filepath)
+	    })
+	}
 }

@@ -16,6 +16,8 @@ type localCompression struct {
 	prefix string
 	format *regexp.Regexp
 	tz     *time.Location
+	mu sync.Mutex
+	processing bool
 }
 
 func newLocalCompression(dir, prefix string, format *regexp.Regexp, tz *time.Location) *localCompression {
@@ -29,6 +31,14 @@ func newLocalCompression(dir, prefix string, format *regexp.Regexp, tz *time.Loc
 
 func (b *localCompression) start(runCh <-chan struct{}, errCh chan<- error) {
 	for range runCh {
+		b.mu.Lock()
+		if b.processing {
+			b.mu.Unlock()
+			continue
+		}
+		b.processing = true
+		b.mu.Unlock()
+
 		var wg sync.WaitGroup
 
 		files, err := scanBackups(b.dir, b.prefix, b.format, b.tz)
