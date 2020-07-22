@@ -2,6 +2,7 @@ package juggler
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"sync"
 	"time"
@@ -55,6 +56,7 @@ func (b *localCompression) start(runCh <-chan struct{}, errCh chan<- error) {
 		}
 
 		// do not wait for this one
+		// todo: remove
 		go func() {
 			for f := range nextCh {
 				fmt.Println(f)
@@ -66,13 +68,48 @@ func (b *localCompression) start(runCh <-chan struct{}, errCh chan<- error) {
 	}
 }
 
-type nullStorage struct {
-
+type limitedStorage struct {
+	mu sync.Mutex
+	processing bool
+	dir    string
+	prefix string
+	format *regexp.Regexp
+	tz     *time.Location
+	maxBackups int
 }
 
-func (b *nullStorage) start(runCh <-chan struct{}, errCh chan<- error) {
+func (b *limitedStorage) start(runCh <-chan struct{}, errCh chan<- error) {
 	for range runCh {
-		// do nothing
+		b.mu.Lock()
+		if b.processing {
+			b.mu.Unlock()
+			continue
+		}
+		b.processing = true
+		b.mu.Unlock()
+
+		var wg sync.WaitGroup
+
+		files, err := scanBackups(b.dir, b.prefix, b.format, b.tz)
+		if err != nil {
+			errCh <- err
+			continue
+		}
+
+		if len(files) > b.maxBackups {
+			files = files[:len(files) - b.maxBackups]
+		}
+
+		for i := range files {
+			wg.Add(1)
+			go func(f lofFileMeta) {
+				if err := os.Remove(f.fullPath()); err != nil {
+					errCh <- err
+				}
+			}(files[i])
+		}
+
+		wg.Wait()
 	}
 }
 

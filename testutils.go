@@ -2,7 +2,6 @@ package juggler
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -92,13 +91,23 @@ func createTestDir(name string) (string, error) {
 	return dir, nil
 }
 
-func expectFileToContain(t *testing.T, file string, content []byte) {
+func expectFileToContain(file string, content []byte) (bool, error) {
 	b, err := ioutil.ReadFile(file)
 	if err != nil {
-		t.Fatal(err)
+		return false, err
 	}
 
-	assert.Equal(t, b, content)
+	if len(b) != len(content) {
+		return false, nil
+	}
+
+	for i := 0; i < len(b); i++ {
+		if b[i] != content[i] {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
 
 func makeTestDir(name string, tb testing.TB) string {

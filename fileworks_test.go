@@ -64,7 +64,9 @@ func TestParseLogFileMeta(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			expectFileToContain(t, existingFile, entry)
+			ok, err := expectFileToContain(existingFile, entry)
+			assert.NoError(t, err)
+			assert.True(t, ok)
 
 			fi, err := osStat(existingFile)
 			if err != nil {
@@ -234,7 +236,9 @@ func TestCompression(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		expectFileToContain(t, file, []byte(content))
+		ok, err := expectFileToContain(file, []byte(content))
+		assert.NoError(t, err)
+		assert.True(t, ok)
 
 		var wg sync.WaitGroup
 		errCh := make(chan error, 10)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 	"testing"
@@ -30,7 +31,10 @@ func TestCreateNewFile(t *testing.T) {
 	assert.Equal(t, len(b), n)
 	expectedFile := filepath.Join(dir, fmt.Sprintf("test_log-%s.1.log", now.Format(logFileSuffix)))
 	assert.FileExists(t, expectedFile)
-	expectFileToContain(t, expectedFile, b)
+
+	ok, err := expectFileToContain(expectedFile, b)
+	assert.NoError(t, err)
+	assert.True(t, ok)
 }
 
 func TestAppendToExistingFile(t *testing.T) {
@@ -47,7 +51,9 @@ func TestAppendToExistingFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expectFileToContain(t, existingFile, entry)
+	ok, err := expectFileToContain(existingFile, entry)
+	assert.NoError(t, err)
+	assert.True(t, ok)
 
 	j := New("test_log", dir)
 	defer j.Close()
@@ -57,7 +63,10 @@ func TestAppendToExistingFile(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, n, len(nextEntry))
-	expectFileToContain(t, existingFile, append(entry, nextEntry...))
+
+	ok, err = expectFileToContain(existingFile, append(entry, nextEntry...))
+	assert.NoError(t, err)
+	assert.True(t, ok)
 }
 
 func TestJugglingDuringWrite(t *testing.T) {
@@ -75,7 +84,9 @@ func TestJugglingDuringWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expectFileToContain(t, existingFile, entry)
+	ok, err := expectFileToContain(existingFile, entry)
+	assert.NoError(t, err)
+	assert.True(t, ok)
 
 	j := New("test_log", dir, WithMaxMegabytes(17))
 	defer j.Close()
@@ -85,7 +96,10 @@ func TestJugglingDuringWrite(t *testing.T) {
 	n, err := j.Write(nextEntry)
 	assert.NoError(t, err)
 	assert.Equal(t, len(nextEntry), n)
-	expectFileToContain(t, nextFile, nextEntry)
+
+	ok, err = expectFileToContain(nextFile, nextEntry)
+	assert.NoError(t, err)
+	assert.True(t, ok)
 }
 
 func TestCompressAfterJuggle(t *testing.T) {
@@ -126,8 +140,13 @@ func TestCompressAfterJuggle(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, len(nextEntry), n)
-	expectFileToContain(t, nextFile, nextEntry)
-	expectFileToContain(t, prevFile, []byte(content))
+	ok, err := expectFileToContain(nextFile, nextEntry)
+	assert.NoError(t, err)
+	assert.True(t, ok)
+
+	ok, err = expectFileToContain(prevFile, []byte(content))
+	assert.NoError(t, err)
+	assert.True(t, ok)
 
 	<-time.After(1 * time.Second)
 
@@ -141,4 +160,60 @@ func TestCompressAfterJuggle(t *testing.T) {
 	prevFile = filepath.Join(dir, fmt.Sprintf("%s-%s.1.log", prefix, "2018-01-23"))
 	assert.FileExists(t, gzippedName(prevFile))
 	assert.NoFileExists(t, prevFile)
+}
+
+func TestRemoveTooManyBackups_NoVersions(t *testing.T) {
+	prefix := "test_log"
+	uf := uncompressedIdenticalTestFileFactory(prefix, "uncompressed fake - log - content")
+	//cf := compressedIdenticalTestFileFactory(prefix, "compressed fake - log - content")
+
+	cleanUp, dir, err := createFakeLogFiles(
+		"testDir",
+		uf("2018-01-16", 1),
+		uf("2018-01-17", 1),
+		uf("2018-01-18", 1),
+		uf("2018-01-19", 1),
+		uf("2018-01-20", 1),
+		uf("2018-01-21", 1),
+		uf("2018-01-22", 1),
+		uf("2018-01-23", 1),
+		uf("2018-01-25", 1),
+		uf("2018-01-26", 1),
+		uf("2018-01-29", 1),
+	)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer cleanUp()
+
+	currentTime = func() time.Time {
+		t, err := time.Parse(logFileSuffix, "2018-01-30")
+		if err != nil {
+			panic(err)
+		}
+		return t
+	}
+
+	j := New(prefix, dir, WithMaxBackups(5), WithNextTick(500 * time.Millisecond))
+	defer j.Close()
+
+	logger := log.New(j, "foo", log.LstdFlags)
+	logger.Println("bar")
+
+	<-time.After(500 * time.Millisecond)
+
+	shouldExist := []string{"2018-01-23", "2018-01-25", "2018-01-26", "2018-01-29", "2018-01-30"}
+	shouldNotExist := []string{"2018-01-16", "2018-01-17", "2018-01-18", "2018-01-19", "2018-01-20", "2018-01-21", "2018-01-22"}
+
+	for _, fn := range shouldExist {
+		fp := filepath.Join(dir, fmt.Sprintf("%s-%s.1.log", prefix, fn))
+		assert.FileExists(t, fp)
+	}
+
+	for _, fn := range shouldNotExist {
+		fp := filepath.Join(dir, fmt.Sprintf("%s-%s.1.log", prefix, fn))
+		assert.FileExists(t, fp)
+	}
 }
