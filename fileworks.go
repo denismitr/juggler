@@ -16,18 +16,18 @@ import (
 	"time"
 )
 
-type lofFileMeta struct {
+type logFileMeta struct {
 	daysAgo int
 	version int
 	dir string
 	f os.FileInfo
 }
 
-func (f lofFileMeta) fullPath() string {
+func (f logFileMeta) fullPath() string {
 	return filepath.Join(f.dir, f.f.Name())
 }
 
-type orderedLogFilesMeta []lofFileMeta
+type orderedLogFilesMeta []logFileMeta
 
 func (f orderedLogFilesMeta) Less(i, j int) bool {
 	if f[i].daysAgo > f[j].daysAgo {
@@ -53,20 +53,20 @@ func gzippedName(file string) string {
 	return file + ".gz"
 }
 
-func parseLogFileMeta(dir string, f os.FileInfo, prefix string, format *regexp.Regexp, tz *time.Location) (lofFileMeta, bool) {
+func parseLogFileMeta(dir string, f os.FileInfo, prefix string, format *regexp.Regexp, tz *time.Location) (logFileMeta, bool) {
 	if ! strings.HasSuffix(f.Name(), ".log") {
-		return lofFileMeta{}, false
+		return logFileMeta{}, false
 	}
 
 	if ! strings.HasPrefix(f.Name(), prefix) {
-		return lofFileMeta{}, false
+		return logFileMeta{}, false
 	}
 
 	matches := format.FindStringSubmatch(f.Name())
-	result := lofFileMeta{f: f, dir: dir}
+	result := logFileMeta{f: f, dir: dir}
 
 	if len(matches) == 0 {
-		return lofFileMeta{}, false
+		return logFileMeta{}, false
 	}
 
 	for i, name := range format.SubexpNames() {
@@ -106,7 +106,7 @@ func scanBackups(
 	dir, prefix string,
 	format *regexp.Regexp,
 	tz *time.Location,
-) ([]lofFileMeta, error) {
+) ([]logFileMeta, error) {
 	if dir == "" {
 		return nil, errors.Errorf("Directory is not set")
 	}
@@ -116,7 +116,7 @@ func scanBackups(
 		return nil, errors.Wrapf(err, "could not read directory [%s] content", dir)
 	}
 
-	var result []lofFileMeta
+	var result []logFileMeta
 
 	for i := range files {
 		if files[i].IsDir() {

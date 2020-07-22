@@ -226,7 +226,7 @@ func (j *Juggler) createStorage() storage {
 		return newLocalCompression(j.directory, j.prefix, j.format, j.timezone)
 	}
 
-	return &limitedStorage{}
+	return newLimitedStorage(j.backupDays, j.directory, j.prefix, j.format, j.timezone)
 }
 
 func (j *Juggler) Close() error {

@@ -162,58 +162,156 @@ func TestCompressAfterJuggle(t *testing.T) {
 	assert.NoFileExists(t, prevFile)
 }
 
-func TestRemoveTooManyBackups_NoVersions(t *testing.T) {
+func TestRemoveTooManyBackups(t *testing.T) {
 	prefix := "test_log"
 	uf := uncompressedIdenticalTestFileFactory(prefix, "uncompressed fake - log - content")
-	//cf := compressedIdenticalTestFileFactory(prefix, "compressed fake - log - content")
+	cf := compressedIdenticalTestFileFactory(prefix, "compressed fake - log - content")
 
-	cleanUp, dir, err := createFakeLogFiles(
-		"testDir",
-		uf("2018-01-16", 1),
-		uf("2018-01-17", 1),
-		uf("2018-01-18", 1),
-		uf("2018-01-19", 1),
-		uf("2018-01-20", 1),
-		uf("2018-01-21", 1),
-		uf("2018-01-22", 1),
-		uf("2018-01-23", 1),
-		uf("2018-01-25", 1),
-		uf("2018-01-26", 1),
-		uf("2018-01-29", 1),
-	)
+	t.Run("no versions and not compressed files", func(t *testing.T) {
+		cleanUp, dir, err := createFakeLogFiles(
+			"testDir",
+			uf("2018-01-16", 1),
+			uf("2018-01-17", 1),
+			uf("2018-01-18", 1),
+			uf("2018-01-19", 1),
+			uf("2018-01-20", 1),
+			uf("2018-01-21", 1),
+			uf("2018-01-22", 1),
+			uf("2018-01-23", 1),
+			uf("2018-01-25", 1),
+			uf("2018-01-26", 1),
+			uf("2018-01-29", 1),
+		)
 
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	defer cleanUp()
-
-	currentTime = func() time.Time {
-		t, err := time.Parse(logFileSuffix, "2018-01-30")
 		if err != nil {
-			panic(err)
+			t.Fatal(err)
 		}
-		return t
-	}
 
-	j := New(prefix, dir, WithMaxBackups(5), WithNextTick(500 * time.Millisecond))
-	defer j.Close()
+		defer cleanUp()
 
-	logger := log.New(j, "foo", log.LstdFlags)
-	logger.Println("bar")
+		currentTime = func() time.Time {
+			t, err := time.Parse(logFileSuffix, "2018-01-30")
+			if err != nil {
+				panic(err)
+			}
+			return t
+		}
 
-	<-time.After(500 * time.Millisecond)
+		j := New(prefix, dir, WithMaxBackups(5), WithNextTick(250 * time.Millisecond))
+		defer j.Close()
 
-	shouldExist := []string{"2018-01-23", "2018-01-25", "2018-01-26", "2018-01-29", "2018-01-30"}
-	shouldNotExist := []string{"2018-01-16", "2018-01-17", "2018-01-18", "2018-01-19", "2018-01-20", "2018-01-21", "2018-01-22"}
+		logger := log.New(j, "foo", log.LstdFlags)
+		logger.Println("bar")
 
-	for _, fn := range shouldExist {
-		fp := filepath.Join(dir, fmt.Sprintf("%s-%s.1.log", prefix, fn))
-		assert.FileExists(t, fp)
-	}
+		<-time.After(800 * time.Millisecond)
 
-	for _, fn := range shouldNotExist {
-		fp := filepath.Join(dir, fmt.Sprintf("%s-%s.1.log", prefix, fn))
-		assert.FileExists(t, fp)
-	}
+		shouldExist := []string{"2018-01-22", "2018-01-23", "2018-01-25", "2018-01-26", "2018-01-29", "2018-01-30"} // 30 is today file, so it does not count
+		shouldNotExist := []string{"2018-01-16", "2018-01-17", "2018-01-18", "2018-01-19", "2018-01-20", "2018-01-21"}
+
+		for _, fn := range shouldExist {
+			fp := filepath.Join(dir, fmt.Sprintf("%s-%s.1.log", prefix, fn))
+			assert.FileExists(t, fp)
+		}
+
+		for _, fn := range shouldNotExist {
+			fp := filepath.Join(dir, fmt.Sprintf("%s-%s.1.log", prefix, fn))
+			assert.NoFileExists(t, fp)
+		}
+	})
+
+	t.Run("no versions and compressed files should be left untouched", func(t *testing.T) {
+		cleanUp, dir, err := createFakeLogFiles(
+			"testDir",
+			uf("2018-01-16", 1),
+			cf("2018-01-17", 1),
+			uf("2018-01-18", 1),
+			cf("2018-01-19", 1),
+			cf("2018-01-20", 1),
+			uf("2018-01-21", 1),
+			uf("2018-01-22", 1),
+			uf("2018-01-23", 1),
+			uf("2018-01-25", 1),
+			uf("2018-01-26", 1),
+			uf("2018-01-29", 1),
+		)
+
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		defer cleanUp()
+
+		currentTime = func() time.Time {
+			t, err := time.Parse(logFileSuffix, "2018-01-30")
+			if err != nil {
+				panic(err)
+			}
+			return t
+		}
+
+		j := New(prefix, dir, WithMaxBackups(5), WithNextTick(250 * time.Millisecond))
+		defer j.Close()
+
+		<-time.After(800 * time.Millisecond)
+
+		shouldExist := []string{"2018-01-22", "2018-01-23", "2018-01-25", "2018-01-26", "2018-01-29"}
+		compressedShouldExist := []string{"2018-01-17", "2018-01-19", "2018-01-20"}
+		shouldNotExist := []string{"2018-01-16", "2018-01-18", "2018-01-21"}
+
+		for _, fn := range shouldExist {
+			fp := filepath.Join(dir, fmt.Sprintf("%s-%s.1.log", prefix, fn))
+			assert.FileExists(t, fp)
+		}
+
+		for _, fn := range shouldNotExist {
+			fp := filepath.Join(dir, fmt.Sprintf("%s-%s.1.log", prefix, fn))
+			assert.NoFileExists(t, fp)
+		}
+
+		for _, fn := range compressedShouldExist {
+			fp := filepath.Join(dir, gzippedName(fmt.Sprintf("%s-%s.1.log", prefix, fn)))
+			assert.FileExists(t, fp)
+		}
+	})
+
+	t.Run("today file is not counted", func(t *testing.T) {
+		cleanUp, dir, err := createFakeLogFiles(
+			"testDir",
+			uf("2018-01-22", 1),
+			uf("2018-01-23", 1),
+			uf("2018-01-25", 1),
+			uf("2018-01-26", 1),
+			uf("2018-01-29", 1),
+		)
+
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		defer cleanUp()
+
+		currentTime = func() time.Time {
+			t, err := time.Parse(logFileSuffix, "2018-01-30")
+			if err != nil {
+				panic(err)
+			}
+			return t
+		}
+
+		j := New(prefix, dir, WithMaxBackups(5), WithNextTick(250 * time.Millisecond))
+		defer j.Close()
+
+		logger := log.New(j, "foo", log.LstdFlags)
+		logger.Println("bar")
+
+		<-time.After(800 * time.Millisecond)
+
+		// 30 is today file, so it does not count
+		shouldExist := []string{"2018-01-22", "2018-01-23", "2018-01-25", "2018-01-26", "2018-01-29", "2018-01-30"}
+
+		for _, fn := range shouldExist {
+			fp := filepath.Join(dir, fmt.Sprintf("%s-%s.1.log", prefix, fn))
+			assert.FileExists(t, fp)
+		}
+	})
 }

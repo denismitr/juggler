@@ -78,6 +78,16 @@ type limitedStorage struct {
 	maxBackups int
 }
 
+func newLimitedStorage(maxBackups int, dir, prefix string, format *regexp.Regexp, tz *time.Location) *limitedStorage {
+	return &limitedStorage{
+		dir:    dir,
+		prefix: prefix,
+		format: format,
+		tz:     tz,
+		maxBackups: maxBackups,
+	}
+}
+
 func (b *limitedStorage) start(runCh <-chan struct{}, errCh chan<- error) {
 	for range runCh {
 		b.mu.Lock()
@@ -85,8 +95,8 @@ func (b *limitedStorage) start(runCh <-chan struct{}, errCh chan<- error) {
 			b.mu.Unlock()
 			continue
 		}
+
 		b.processing = true
-		b.mu.Unlock()
 
 		var wg sync.WaitGroup
 
@@ -96,20 +106,26 @@ func (b *limitedStorage) start(runCh <-chan struct{}, errCh chan<- error) {
 			continue
 		}
 
+		var filesToDelete []logFileMeta
 		if len(files) > b.maxBackups {
-			files = files[:len(files) - b.maxBackups]
+			filesToDelete = files[:len(files) - b.maxBackups]
 		}
 
-		for i := range files {
+		for i := range filesToDelete {
 			wg.Add(1)
-			go func(f lofFileMeta) {
+			go func(f logFileMeta) {
 				if err := os.Remove(f.fullPath()); err != nil {
 					errCh <- err
 				}
+
+				wg.Done()
 			}(files[i])
 		}
 
 		wg.Wait()
+
+		b.processing = false
+		b.mu.Unlock()
 	}
 }
 
