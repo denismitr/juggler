@@ -3,7 +3,6 @@ package juggler
 import (
 	"github.com/pkg/errors"
 	"io"
-	"log"
 	"os"
 	"regexp"
 	"sync"
@@ -11,7 +10,7 @@ import (
 )
 
 const (
-	logFileSuffix       = "2006-01-02"
+	dateSuffix          = "2006-01-02"
 	defaultMaxMegabytes = 50
 	defaultExt          = ".log"
 )
@@ -33,12 +32,13 @@ type Juggler struct {
 	prefix    string
 
 	maxFilesize int
-	backupDays  int
+	maxBackups  int
 	timezone    *time.Location
 	compression bool
 
 	closeCh  chan struct{}
 	errCh    chan error
+	errorObservers []chan error
 	nextTick time.Duration
 	format   *regexp.Regexp
 
@@ -57,13 +57,14 @@ func New(prefix string, dir string, cfgs ...Configurator) *Juggler {
 		directory:      dir,
 		currentVersion: 1,
 		maxFilesize:    defaultMaxMegabytes,
-		backupDays:     5,
+		maxBackups:     5,
 		closeCh:        make(chan struct{}),
 		errCh:          make(chan error),
 		nextTick:       5 * time.Second,
 		timezone:       time.UTC,
 		compression:    false,
 		format:         createFormat(prefix),
+		errorObservers: make([]chan error, 0),
 	}
 
 	for _, cfg := range cfgs {
@@ -75,6 +76,10 @@ func New(prefix string, dir string, cfgs ...Configurator) *Juggler {
 	j.currentFilepath = resolveFilepath(j.prefix, j.directory, currentTime(), j.currentVersion, j.timezone)
 
 	return j
+}
+
+func (j *Juggler) NotifyOnError(errCh chan error) {
+	j.errorObservers = append(j.errorObservers, errCh)
 }
 
 func (j *Juggler) Write(p []byte) (int, error) {
@@ -214,7 +219,11 @@ loop:
 			close(backupRunCh)
 			break loop
 		case err := <-j.errCh:
-			log.Println(err)
+			for _, c := range j.errorObservers {
+				select {
+					case c <- err:
+				}
+			}
 		}
 	}
 
@@ -226,7 +235,7 @@ func (j *Juggler) createStorage() storage {
 		return newLocalCompression(j.directory, j.prefix, j.format, j.timezone)
 	}
 
-	return newLimitedStorage(j.backupDays, j.directory, j.prefix, j.format, j.timezone)
+	return newLimitedStorage(j.maxBackups, j.directory, j.prefix, j.format, j.timezone)
 }
 
 func (j *Juggler) Close() error {

@@ -18,7 +18,7 @@ func WithTimezone(tz *time.Location) Configurator {
 
 func WithMaxBackups(backups int) Configurator {
 	return func(j *Juggler) {
-		j.backupDays = backups
+		j.maxBackups = backups
 	}
 }
 

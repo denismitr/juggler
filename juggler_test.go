@@ -29,7 +29,7 @@ func TestCreateNewFile(t *testing.T) {
 	n, err := j.Write(b)
 	assert.NoError(t, err)
 	assert.Equal(t, len(b), n)
-	expectedFile := filepath.Join(dir, fmt.Sprintf("test_log-%s.1.log", now.Format(logFileSuffix)))
+	expectedFile := filepath.Join(dir, fmt.Sprintf("test_log-%s.1.log", now.Format(dateSuffix)))
 	assert.FileExists(t, expectedFile)
 
 	ok, err := expectFileToContain(expectedFile, b)
@@ -44,7 +44,7 @@ func TestAppendToExistingFile(t *testing.T) {
 	dir := makeTestDir("create_new_file_test", t)
 	defer os.RemoveAll(dir)
 
-	existingFile := filepath.Join(dir, fmt.Sprintf("test_log-%s.1.log", now.Format(logFileSuffix)))
+	existingFile := filepath.Join(dir, fmt.Sprintf("test_log-%s.1.log", now.Format(dateSuffix)))
 	entry := []byte("logEntry\n")
 	err := ioutil.WriteFile(existingFile, entry, 0644)
 	if err != nil {
@@ -77,7 +77,7 @@ func TestJugglingDuringWrite(t *testing.T) {
 	dir := makeTestDir("create_new_file_test", t)
 	defer os.RemoveAll(dir)
 
-	existingFile := filepath.Join(dir, fmt.Sprintf("test_log-%s.1.log", now.Format(logFileSuffix)))
+	existingFile := filepath.Join(dir, fmt.Sprintf("test_log-%s.1.log", now.Format(dateSuffix)))
 	entry := []byte("logEntry\n")
 	err := ioutil.WriteFile(existingFile, entry, 0644)
 	if err != nil {
@@ -91,7 +91,7 @@ func TestJugglingDuringWrite(t *testing.T) {
 	j := New("test_log", dir, WithMaxMegabytes(17))
 	defer j.Close()
 
-	nextFile := filepath.Join(dir, fmt.Sprintf("test_log-%s.2.log", now.Format(logFileSuffix)))
+	nextFile := filepath.Join(dir, fmt.Sprintf("test_log-%s.2.log", now.Format(dateSuffix)))
 	nextEntry := []byte("next log too big")
 	n, err := j.Write(nextEntry)
 	assert.NoError(t, err)
@@ -123,7 +123,7 @@ func TestCompressAfterJuggle(t *testing.T) {
 	megabyte = 1
 
 	currentTime = func() time.Time {
-		t, err := time.Parse(logFileSuffix, "2018-01-29")
+		t, err := time.Parse(dateSuffix, "2018-01-29")
 		if err != nil {
 			panic(err)
 		}
@@ -190,7 +190,7 @@ func TestRemoveTooManyBackups(t *testing.T) {
 		defer cleanUp()
 
 		currentTime = func() time.Time {
-			t, err := time.Parse(logFileSuffix, "2018-01-30")
+			t, err := time.Parse(dateSuffix, "2018-01-30")
 			if err != nil {
 				panic(err)
 			}
@@ -242,7 +242,7 @@ func TestRemoveTooManyBackups(t *testing.T) {
 		defer cleanUp()
 
 		currentTime = func() time.Time {
-			t, err := time.Parse(logFileSuffix, "2018-01-30")
+			t, err := time.Parse(dateSuffix, "2018-01-30")
 			if err != nil {
 				panic(err)
 			}
@@ -291,7 +291,7 @@ func TestRemoveTooManyBackups(t *testing.T) {
 		defer cleanUp()
 
 		currentTime = func() time.Time {
-			t, err := time.Parse(logFileSuffix, "2018-01-30")
+			t, err := time.Parse(dateSuffix, "2018-01-30")
 			if err != nil {
 				panic(err)
 			}

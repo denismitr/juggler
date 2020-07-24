@@ -90,7 +90,7 @@ func parseLogFileMeta(dir string, f os.FileInfo, prefix string, format *regexp.R
 }
 
 func parseDayDiff(date string, tz *time.Location) (days int, err error) {
-	t, err := time.Parse(logFileSuffix, date)
+	t, err := time.Parse(dateSuffix, date)
 	if err != nil {
 		err = errors.Wrapf(err, "could not parse date %s", date)
 		return
@@ -205,7 +205,7 @@ func resolveFilepath(prefix, dir string, currentTime time.Time, currentVersion i
 		currentTime = currentTime.UTC()
 	}
 
-	date := currentTime.Format(logFileSuffix)
+	date := currentTime.Format(dateSuffix)
 
 	return filepath.Join(dir, fmt.Sprintf("%s-%s.%d%s", prefix, date, currentVersion, defaultExt))
 }

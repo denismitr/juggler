@@ -30,7 +30,7 @@ func TestParseLogFileMeta(t *testing.T) {
 			dirName: "create_new_file_test",
 			ago:     -48 * time.Hour,
 			existingFile: func(dir, prefix string, now time.Time, version int) string {
-				return filepath.Join(dir, fmt.Sprintf("test_log-%s.1.log", now.Format(logFileSuffix)))
+				return filepath.Join(dir, fmt.Sprintf("test_log-%s.1.log", now.Format(dateSuffix)))
 			},
 			version: 1,
 			daysAgo: 2,
@@ -42,7 +42,7 @@ func TestParseLogFileMeta(t *testing.T) {
 			dirName: "create_new_file_test",
 			ago:     -24 * time.Hour,
 			existingFile: func(dir, prefix string, now time.Time, version int) string {
-				return filepath.Join(dir, fmt.Sprintf("test_log-%s.%d.log", now.Format(logFileSuffix), version))
+				return filepath.Join(dir, fmt.Sprintf("test_log-%s.%d.log", now.Format(dateSuffix), version))
 			},
 			version: 3,
 			daysAgo: 1,
@@ -153,7 +153,7 @@ func TestScanBackups(t *testing.T) {
 		defer cleanUp()
 
 		currentTime = func() time.Time {
-			t, err := time.Parse(logFileSuffix, "2018-01-30")
+			t, err := time.Parse(dateSuffix, "2018-01-30")
 			if err != nil {
 				panic(err)
 			}
@@ -197,7 +197,7 @@ func TestScanBackups(t *testing.T) {
 		defer cleanUp()
 
 		currentTime = func() time.Time {
-			t, err := time.Parse(logFileSuffix, "2018-01-30")
+			t, err := time.Parse(dateSuffix, "2018-01-30")
 			if err != nil {
 				panic(err)
 			}
@@ -291,7 +291,7 @@ func TestResolveFilepath(t *testing.T) {
 	        expected: "/tmp/logs/test_log-2018-01-30.1.log",
 	        prefix: "test_log",
 	        dir: "/tmp/logs",
-	        currentTime: parseTime(logFileSuffix, "2018-01-30"),
+	        currentTime: parseTime(dateSuffix, "2018-01-30"),
 	        currentVersion: 1,
 	        tz: nil,
 	    },
@@ -299,7 +299,7 @@ func TestResolveFilepath(t *testing.T) {
 			expected: "/tmp/logs/test_log-2018-01-30.2.log",
 			prefix: "test_log",
 			dir: "/tmp/logs",
-			currentTime: parseTime(logFileSuffix, "2018-01-30"),
+			currentTime: parseTime(dateSuffix, "2018-01-30"),
 			currentVersion: 2,
 			tz: nil,
 		},
@@ -307,7 +307,7 @@ func TestResolveFilepath(t *testing.T) {
 			expected: "/tmp/logs/test_log-2018-01-30.2.log",
 			prefix: "test_log",
 			dir: "/tmp/logs",
-			currentTime: parseTime(logFileSuffix, "2018-01-30"),
+			currentTime: parseTime(dateSuffix, "2018-01-30"),
 			currentVersion: 2,
 			tz: parseLocation("Europe/Moscow"),
 		},
