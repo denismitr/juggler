@@ -16,7 +16,7 @@ func setTestNow() time.Time {
 }
 
 func TestCreateNewFile(t *testing.T) {
-	dir := makeTestDir("create_new_file_test", t)
+	dir := makeTestDir(randomString(20), t)
 	defer os.RemoveAll(dir)
 
 	currentTime = setTestNow
@@ -41,7 +41,7 @@ func TestAppendToExistingFile(t *testing.T) {
 	currentTime = setTestNow
 	now := setTestNow()
 
-	dir := makeTestDir("create_new_file_test", t)
+	dir := makeTestDir(randomString(15), t)
 	defer os.RemoveAll(dir)
 
 	existingFile := filepath.Join(dir, fmt.Sprintf("test_log-%s.1.log", now.Format(dateSuffix)))
@@ -74,7 +74,7 @@ func TestJugglingDuringWrite(t *testing.T) {
 	now := setTestNow()
 	megabyte = 1
 
-	dir := makeTestDir("create_new_file_test", t)
+	dir := makeTestDir(randomString(15), t)
 	defer os.RemoveAll(dir)
 
 	existingFile := filepath.Join(dir, fmt.Sprintf("test_log-%s.1.log", now.Format(dateSuffix)))
@@ -108,7 +108,7 @@ func TestCompressAfterJuggle(t *testing.T) {
 	uf := uncompressedIdenticalTestFileFactory(prefix, content)
 
 	cleanUp, dir, err := createFakeLogFiles(
-		"testDir",
+		randomString(15),
 		uf("2018-01-23", 1),
 		uf("2018-01-25", 1),
 		uf("2018-01-29", 1),
@@ -169,7 +169,7 @@ func TestRemoveTooManyBackups(t *testing.T) {
 
 	t.Run("no versions and not compressed files", func(t *testing.T) {
 		cleanUp, dir, err := createFakeLogFiles(
-			"testDir",
+			randomString(15),
 			uf("2018-01-16", 1),
 			uf("2018-01-17", 1),
 			uf("2018-01-18", 1),
@@ -221,7 +221,7 @@ func TestRemoveTooManyBackups(t *testing.T) {
 
 	t.Run("no versions and compressed files should be left untouched", func(t *testing.T) {
 		cleanUp, dir, err := createFakeLogFiles(
-			"testDir",
+			randomString(14),
 			uf("2018-01-16", 1),
 			cf("2018-01-17", 1),
 			uf("2018-01-18", 1),
@@ -276,7 +276,7 @@ func TestRemoveTooManyBackups(t *testing.T) {
 
 	t.Run("today file is not counted", func(t *testing.T) {
 		cleanUp, dir, err := createFakeLogFiles(
-			"testDir",
+			randomString(14),
 			uf("2018-01-22", 1),
 			uf("2018-01-23", 1),
 			uf("2018-01-25", 1),

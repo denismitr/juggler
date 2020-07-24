@@ -138,7 +138,7 @@ func scanBackups(
 	return result, nil
 }
 
-func compress(src string, wg *sync.WaitGroup, errCh chan<- error, nextCh chan string) {
+func compressAndRemove(src string, wg *sync.WaitGroup, errCh chan<- error, nextCh chan string) {
 	defer wg.Done()
 	f, err := os.Open(src)
 	if err != nil {

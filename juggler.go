@@ -35,20 +35,21 @@ type Juggler struct {
 	maxBackups  int
 	timezone    *time.Location
 	compression bool
+	uploader    uploader
 
-	closeCh  chan struct{}
-	errCh    chan error
+	closeCh        chan struct{}
+	errCh          chan error
 	errorObservers []chan error
-	nextTick time.Duration
-	format   *regexp.Regexp
+	nextTick       time.Duration
+	format         *regexp.Regexp
 
-	cmu         sync.RWMutex
+	cmu sync.RWMutex
 
 	currentFilepath string
-	currentSize int64
-	currentTime time.Time
-	currentFile *os.File
-	currentVersion     int
+	currentSize     int64
+	currentTime     time.Time
+	currentFile     *os.File
+	currentVersion  int
 }
 
 func New(prefix string, dir string, cfgs ...Configurator) *Juggler {
@@ -107,7 +108,7 @@ func (j *Juggler) juggle(n int) error {
 		return errors.Wrapf(err, "error getting stats for %s", currentFilepath)
 	}
 
-	if ! exists {
+	if !exists {
 		return j.create(currentFilepath)
 	}
 
@@ -225,21 +226,13 @@ loop:
 		case err := <-j.errCh:
 			for _, c := range j.errorObservers {
 				select {
-					case c <- err:
+				case c <- err:
 				}
 			}
 		}
 	}
 
 	tick.Stop()
-}
-
-func (j *Juggler) createStorage() storage {
-	if j.compression {
-		return newLocalCompression(j.directory, j.prefix, j.format, j.timezone)
-	}
-
-	return newLimitedStorage(j.maxBackups, j.directory, j.prefix, j.format, j.timezone)
 }
 
 func (j *Juggler) Close() error {
