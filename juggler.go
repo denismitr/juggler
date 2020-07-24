@@ -126,6 +126,10 @@ func (j *Juggler) juggle(n int) error {
 		return j.juggle(n)
 	}
 
+	if j.currentFilepath == currentFilepath && j.currentFile != nil && j.currentSize == size {
+		return nil
+	}
+
 	j.cmu.Lock()
 	f, err := os.OpenFile(currentFilepath, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
