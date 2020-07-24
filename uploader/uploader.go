@@ -1,22 +1,21 @@
 package uploader
 
 import (
-	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/pkg/errors"
+	"log"
 	"os"
 )
 
 type Config struct {
-	region string
-	id     string
-	secret string
-	bucket string
-	folder string
-	acl    string
+	Region string
+	Id     string
+	Secret string
+	Bucket string
+	Acl    string
 }
 
 type S3GzipUploader struct {
@@ -25,26 +24,31 @@ type S3GzipUploader struct {
 }
 
 func New(cfg Config) (*S3GzipUploader, error) {
-	if cfg.bucket == "" {
+	if cfg.Bucket == "" {
 		return nil, errors.Errorf("Bucket is required")
 	}
 
-	uploader := &S3GzipUploader{cfg: cfg}
-	if err := uploader.connect(); err != nil {
+	u := &S3GzipUploader{cfg: cfg}
+	if err := u.connect(); err != nil {
 		return nil, err
 	}
 
-	return uploader, nil
+	return u, nil
 }
 
 func (u *S3GzipUploader) connect() error {
+	ll := aws.LogDebugWithHTTPBody | aws.LogDebugWithSigning
 	s, err := session.NewSession(&aws.Config{
-		Region:      aws.String(u.cfg.region),
-		Credentials: credentials.NewStaticCredentials(u.cfg.id, u.cfg.secret, ""),
+		Region:      aws.String("us-east-1"),
+		Endpoint:    aws.String("http://127.0.0.1:9001"),
+		DisableSSL:  aws.Bool(true),
+		S3ForcePathStyle: aws.Bool(true),
+		Credentials: credentials.NewStaticCredentials(u.cfg.Id, u.cfg.Secret, ""),
+		LogLevel: &ll,
 	})
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "could not connect to %s", "http://127.0.0.1:9001")
 	}
 
 	u.s = s
@@ -64,34 +68,22 @@ func (u *S3GzipUploader) Upload(filepath string) error {
 		return err
 	}
 
-	stat, err := f.Stat()
-	if err != nil {
-		return err
-	}
-
-	size := stat.Size()
-	input := &s3.PutObjectInput{
+	// Create an uploader with the session and default options
+	up := s3manager.NewUploader(u.s)
+	res, err := up.Upload(&s3manager.UploadInput{
+		Bucket:          aws.String("testbucket"),
+		Key:             aws.String("testfile.gz"),
 		Body:            f,
-		Bucket:          aws.String(u.cfg.bucket),
-		Key:             aws.String(u.resolveKeyFor(filepath)),
 		ContentType:     aws.String("text/plain"),
-		ContentLength:   aws.Int64(size),
 		ContentEncoding: aws.String("gzip"),
-	}
-
-	if u.cfg.acl != "" {
-		input.ACL = aws.String(u.cfg.acl)
-	}
-
-	_, err = s3.New(u.s).PutObject(input)
+		ACL:             aws.String("public-read"),
+	})
 
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "could not put object %s to S3", "testfile.gz")
 	}
+
+	log.Println(res.Location)
 
 	return nil
-}
-
-func (u *S3GzipUploader) resolveKeyFor(filepath string) string {
-	return fmt.Sprintf("%s/%s", u.cfg.folder, filepath)
 }

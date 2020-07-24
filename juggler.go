@@ -21,8 +21,9 @@ var createFormat = func(prefix string) *regexp.Regexp {
 	return regexp.MustCompile("^" + prefix + `-(?P<date>\d{4}-\d{2}-\d{2})\.(?P<version>\d{1,4})\.log$`)
 }
 
+type nowFunc func() time.Time
+
 var (
-	currentTime = time.Now
 	osStat      = os.Stat
 	megabyte    = 1024 * 1024
 )
@@ -41,6 +42,7 @@ type Juggler struct {
 	errCh          chan error
 	errorObservers []chan error
 	nextTick       time.Duration
+	nowFunc        nowFunc
 	format         *regexp.Regexp
 
 	cmu sync.RWMutex
@@ -66,6 +68,7 @@ func New(prefix string, dir string, cfgs ...Configurator) *Juggler {
 		compression:    false,
 		format:         createFormat(prefix),
 		errorObservers: make([]chan error, 0),
+		nowFunc:        time.Now,
 	}
 
 	for _, cfg := range cfgs {
@@ -74,7 +77,7 @@ func New(prefix string, dir string, cfgs ...Configurator) *Juggler {
 
 	go j.watch()
 
-	j.currentFilepath = resolveFilepath(j.prefix, j.directory, currentTime(), j.currentVersion, j.timezone)
+	j.currentFilepath = resolveFilepath(j.prefix, j.directory, j.nowFunc(), j.currentVersion, j.timezone)
 
 	return j
 }
@@ -150,7 +153,7 @@ func (j *Juggler) resolveCurrentFile() (currentFilepath string, size int64, exis
 	j.cmu.RLock()
 	defer j.cmu.RUnlock()
 
-	currentFilepath = resolveFilepath(j.prefix, j.directory, currentTime(), j.currentVersion, j.timezone)
+	currentFilepath = resolveFilepath(j.prefix, j.directory, j.nowFunc(), j.currentVersion, j.timezone)
 	info, statErr := osStat(currentFilepath)
 
 	if statErr != nil {

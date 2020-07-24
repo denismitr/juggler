@@ -17,14 +17,14 @@ type uploader interface {
 
 func (j *Juggler) createStorage() storage {
 	if j.uploader != nil && j.compression {
-		return newCloudCompression(j.directory, j.prefix, j.uploader, j.format, j.timezone)
+		return newCloudCompression(j.directory, j.prefix, j.uploader, j.format, j.nowFunc, j.timezone)
 	}
 
 	if j.compression {
-		return newLocalCompression(j.directory, j.prefix, j.format, j.timezone)
+		return newLocalCompression(j.directory, j.prefix, j.format, j.nowFunc, j.timezone)
 	}
 
-	return newLimitedStorage(j.maxBackups, j.directory, j.prefix, j.format, j.timezone)
+	return newLimitedStorage(j.maxBackups, j.directory, j.prefix, j.format, j.nowFunc, j.timezone)
 }
 
 type base struct {
@@ -32,6 +32,7 @@ type base struct {
 	prefix string
 	format *regexp.Regexp
 	tz     *time.Location
+	nowFunc func() time.Time
 }
 
 type cloudCompression struct {
@@ -39,13 +40,14 @@ type cloudCompression struct {
 	uploader uploader
 }
 
-func newCloudCompression(dir, prefix string, uploader uploader, format *regexp.Regexp, tz *time.Location) *cloudCompression {
+func newCloudCompression(dir, prefix string, uploader uploader, format *regexp.Regexp, nowFunc nowFunc, tz *time.Location) *cloudCompression {
 	return &cloudCompression{
 		base: base{
 			dir:    dir,
 			prefix: prefix,
 			format: format,
 			tz:     tz,
+			nowFunc: nowFunc,
 		},
 		uploader: uploader,
 	}
@@ -55,13 +57,14 @@ type localCompression struct {
 	base
 }
 
-func newLocalCompression(dir, prefix string, format *regexp.Regexp, tz *time.Location) *localCompression {
+func newLocalCompression(dir, prefix string, format *regexp.Regexp, nowFunc nowFunc, tz *time.Location) *localCompression {
 	return &localCompression{
 		base: base{
 			dir:    dir,
 			prefix: prefix,
 			format: format,
 			tz:     tz,
+			nowFunc: nowFunc,
 		},
 	}
 }
@@ -70,7 +73,7 @@ func (b *localCompression) start(runCh <-chan struct{}, errCh chan<- error) {
 	for range runCh {
 		var wg sync.WaitGroup
 
-		files, err := scanBackups(b.dir, b.prefix, b.format, b.tz)
+		files, err := scanBackups(b.dir, b.prefix, b.format, b.nowFunc, b.tz)
 		if err != nil {
 			errCh <- err
 			continue
@@ -90,13 +93,14 @@ type limitedStorage struct {
 	maxBackups int
 }
 
-func newLimitedStorage(maxBackups int, dir, prefix string, format *regexp.Regexp, tz *time.Location) *limitedStorage {
+func newLimitedStorage(maxBackups int, dir, prefix string, format *regexp.Regexp, nowFunc nowFunc, tz *time.Location) *limitedStorage {
 	return &limitedStorage{
 		base: base{
 			dir:    dir,
 			prefix: prefix,
 			format: format,
 			tz:     tz,
+			nowFunc: nowFunc,
 		},
 		maxBackups: maxBackups,
 	}
@@ -106,7 +110,7 @@ func (b *limitedStorage) start(runCh <-chan struct{}, errCh chan<- error) {
 	for range runCh {
 		var wg sync.WaitGroup
 
-		files, err := scanBackups(b.dir, b.prefix, b.format, b.tz)
+		files, err := scanBackups(b.dir, b.prefix, b.format, b.nowFunc, b.tz)
 		if err != nil {
 			errCh <- err
 			continue
@@ -136,7 +140,7 @@ func (b *cloudCompression) start(runCh <-chan struct{}, errCh chan<- error) {
 	for range runCh {
 		var wg sync.WaitGroup
 
-		files, err := scanBackups(b.dir, b.prefix, b.format, b.tz)
+		files, err := scanBackups(b.dir, b.prefix, b.format, b.nowFunc, b.tz)
 		if err != nil {
 			errCh <- err
 			continue
@@ -146,7 +150,7 @@ func (b *cloudCompression) start(runCh <-chan struct{}, errCh chan<- error) {
 
 		for _, f := range files {
 			wg.Add(1)
-			go compressAndRemove(f.fullPath(), &wg, errCh, nil)
+			go compressAndRemove(f.fullPath(), &wg, errCh, nextCh)
 		}
 
 		go func() {

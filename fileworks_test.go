@@ -54,7 +54,8 @@ func TestParseLogFileMeta(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			now := time.Now().Add(tc.ago) // log file from some time ago
+			nowFunc := createNowFunc(dateSuffix, "2018-01-30")
+			now := nowFunc().Add(tc.ago) // log file from some time ago
 			dir := makeTestDir(tc.dirName, t)
 			defer os.RemoveAll(dir)
 
@@ -75,7 +76,7 @@ func TestParseLogFileMeta(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			lf, ok := parseLogFileMeta(dir, fi, tc.prefix, createFormat(tc.prefix), time.UTC)
+			lf, ok := parseLogFileMeta(dir, fi, tc.prefix, createFormat(tc.prefix), nowFunc, time.UTC)
 
 			assert.True(t, ok, "regex could not match filename")
 			assert.Equal(t, tc.version, lf.version)
@@ -117,15 +118,8 @@ func TestParseDiffInDays(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.in, func(t *testing.T) {
-			currentTime = func() time.Time {
-				t, err := time.Parse(testTimeFormat, tc.today)
-				if err != nil {
-					panic(err)
-				}
-				return t
-			}
-
-			days, err := parseDayDiff(tc.in, tc.tz)
+			nowFunc := createNowFunc(testTimeFormat, tc.today)
+			days, err := parseDayDiff(tc.in, nowFunc(), tc.tz)
 			if tc.err == nil {
 				assert.NoError(t, err)
 			}
@@ -154,15 +148,9 @@ func TestScanBackups(t *testing.T) {
 
 		defer cleanUp()
 
-		currentTime = func() time.Time {
-			t, err := time.Parse(dateSuffix, "2018-01-30")
-			if err != nil {
-				panic(err)
-			}
-			return t
-		}
+		nowFunc := createNowFunc(dateSuffix, "2018-01-30")
 
-		lfs, err := scanBackups(dir, prefix, createFormat(prefix), time.UTC)
+		lfs, err := scanBackups(dir, prefix, createFormat(prefix), nowFunc, time.UTC)
 
 		assert.NoError(t, err)
 		assert.Equal(t, 4, len(lfs), "expected exactly 4 backups found")
@@ -198,15 +186,8 @@ func TestScanBackups(t *testing.T) {
 
 		defer cleanUp()
 
-		currentTime = func() time.Time {
-			t, err := time.Parse(dateSuffix, "2018-01-30")
-			if err != nil {
-				panic(err)
-			}
-			return t
-		}
-
-		lfs, err := scanBackups(dir, prefix, createFormat(prefix), time.UTC)
+		nowFunc := createNowFunc(dateSuffix, "2018-01-30")
+		lfs, err := scanBackups(dir, prefix, createFormat(prefix), nowFunc, time.UTC)
 
 		assert.NoError(t, err)
 		assert.Equal(t, 3, len(lfs), "expected exactly 4 backups found")

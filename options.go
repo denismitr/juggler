@@ -40,3 +40,9 @@ func WithCompresssionAndCloudUploader(uploader uploader) Configurator {
 		j.uploader = uploader
 	}
 }
+
+func withNowFunc(nowFunc nowFunc) Configurator {
+	return func(j *Juggler) {
+		j.nowFunc = nowFunc
+	}
+}

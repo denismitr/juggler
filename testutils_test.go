@@ -32,6 +32,16 @@ func randomString(length int) string {
 	return string(b)
 }
 
+func createNowFunc(layout, value string) nowFunc {
+	return func() time.Time {
+		t, err := time.Parse(layout, value)
+		if err != nil {
+			panic(err)
+		}
+		return t
+	}
+}
+
 func location(name string) *time.Location {
 	l, err := time.LoadLocation(name)
 	if err != nil {
