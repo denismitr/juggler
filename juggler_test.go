@@ -183,7 +183,7 @@ func TestCompressAndUploadAfterJuggle(t *testing.T) {
 
 	megabyte = 1
 
-	uploader, err := cloud.New(cloud.Config{
+	cloudUploader, err := cloud.New(cloud.Config{
 		Id: "minio",
 		Secret: "minio123",
 		Bucket: "testbucket",
@@ -202,7 +202,7 @@ func TestCompressAndUploadAfterJuggle(t *testing.T) {
 	j := New(
 		prefix,
 		dir,
-		WithCompressionAndCloudUploader(uploader),
+		WithCompressionAndCloudUploader(cloudUploader),
 		WithMaxMegabytes(17),
 		WithNextTick(500 * time.Millisecond),
 		withNowFunc(nowFunc),
@@ -255,7 +255,7 @@ func TestRemoveTooManyBackups(t *testing.T) {
 
 	nowFunc := createNowFunc(dateSuffix, "2018-01-30")
 
-	t.Run("no versions and not compressed files", func(t *testing.T) {
+	t.Run("no versions and no compressed files", func(t *testing.T) {
 		cleanUp, dir, err := createFakeLogFiles(
 			randomString(15),
 			uf("2018-01-16", 1),
