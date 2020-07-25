@@ -34,7 +34,7 @@ func WithNextTick(nextTick time.Duration) Configurator {
 	}
 }
 
-func WithCompresssionAndCloudUploader(uploader uploader) Configurator {
+func WithCompressionAndCloudUploader(uploader uploader) Configurator {
 	return func(j *Juggler) {
 		j.compression = true
 		j.uploader = uploader

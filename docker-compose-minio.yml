@@ -26,12 +26,7 @@ services:
       - minio
     stdin_open: true # docker run -i
     tty: true        # docker run -t
-    entrypoint: >
-      /bin/sh -c "
-      /usr/bin/mc config host rm myminio;
-      /usr/bin/mc config host add --quiet --api s3v4 myminio http://minio:9000 minio minio123;
-      /usr/bin/mc rb --force myminio/testbucket/;
-      /usr/bin/mc mb --quiet myminio/testbucket/;
-      /usr/bin/mc policy set public myminio/testbucket;
-      "
+    volumes:
+      - "./minio-entrypoint.sh:/entrypoint.sh"
+    command: entrypoint.sh
 

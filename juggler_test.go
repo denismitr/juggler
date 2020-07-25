@@ -2,7 +2,7 @@ package juggler
 
 import (
 	"fmt"
-	up "github.com/denismitr/juggler/uploader"
+	"github.com/denismitr/juggler/cloud"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"log"
@@ -183,10 +183,14 @@ func TestCompressAndUploadAfterJuggle(t *testing.T) {
 
 	megabyte = 1
 
-	uploader, err := up.New(up.Config{
+	uploader, err := cloud.New(cloud.Config{
 		Id: "minio",
 		Secret: "minio123",
-		Bucket: "local/testbucket",
+		Bucket: "testbucket",
+		Endpoint: "http://127.0.0.1:9001",
+		Acl: "public-read",
+		Region: "us-east-1",
+		NoSSL: true,
 	})
 
 	if err != nil {
@@ -198,7 +202,7 @@ func TestCompressAndUploadAfterJuggle(t *testing.T) {
 	j := New(
 		prefix,
 		dir,
-		WithCompresssionAndCloudUploader(uploader),
+		WithCompressionAndCloudUploader(uploader),
 		WithMaxMegabytes(17),
 		WithNextTick(500 * time.Millisecond),
 		withNowFunc(nowFunc),
