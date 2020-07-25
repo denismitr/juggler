@@ -21,12 +21,9 @@ services:
 
   minio-mc:
     container_name: minio-mc
-    image: minio/mc
+    build:
+      context: .
+      dockerfile: build/minio/Dockerfile
     depends_on:
       - minio
-    stdin_open: true # docker run -i
-    tty: true        # docker run -t
-    volumes:
-      - "./minio-entrypoint.sh:/entrypoint.sh"
-    command: entrypoint.sh
 

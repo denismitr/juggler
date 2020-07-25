@@ -241,13 +241,14 @@ loop:
 func (j *Juggler) Close() error {
 	j.cmu.Lock()
 	defer func() {
+		j.currentFilepath = ""
 		j.currentFile = nil
 		j.currentSize = 0
 		j.cmu.Unlock()
 	}()
 
 	if j.currentFile != nil {
-		return j.currentFile.Close()
+		j.currentFile.Close()
 	}
 
 	close(j.closeCh)

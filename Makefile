@@ -8,8 +8,9 @@ COVEROUT=./cover/c.out
 test:
 	$(GOTEST) -cover -coverprofile=$(COVEROUT) . && $(GOCOVER) -html=$(COVEROUT)
 minio:
-	docker-compose -f docker-compose-minio.yml up -d
+	docker-compose -f docker-compose-minio.yml up -d --build --force-recreate
 mc:
-	docker-compose -f docker-compose-minio.yml run --entrypoint="/bin/sh" minio-mc
+	docker-compose -f docker-compose-minio.yml exec minio-mc sh
 down:
 	docker-compose -f docker-compose-minio.yml down
+	docker-compose -f docker-compose-minio.yml rm -fsv

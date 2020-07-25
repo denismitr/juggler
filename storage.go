@@ -1,6 +1,7 @@
 package juggler
 
 import (
+	"github.com/pkg/errors"
 	"os"
 	"regexp"
 	"sync"
@@ -33,24 +34,6 @@ type base struct {
 	format *regexp.Regexp
 	tz     *time.Location
 	nowFunc func() time.Time
-}
-
-type cloudCompression struct {
-	base
-	uploader uploader
-}
-
-func newCloudCompression(dir, prefix string, uploader uploader, format *regexp.Regexp, nowFunc nowFunc, tz *time.Location) *cloudCompression {
-	return &cloudCompression{
-		base: base{
-			dir:    dir,
-			prefix: prefix,
-			format: format,
-			tz:     tz,
-			nowFunc: nowFunc,
-		},
-		uploader: uploader,
-	}
 }
 
 type localCompression struct {
@@ -125,7 +108,7 @@ func (b *limitedStorage) start(runCh <-chan struct{}, errCh chan<- error) {
 			wg.Add(1)
 			go func(f logFileMeta) {
 				if err := os.Remove(f.fullPath()); err != nil {
-					errCh <- err
+					errCh <- errors.Wrapf(err, "could not delete %s", f.fullPath())
 				}
 
 				wg.Done()
@@ -133,6 +116,24 @@ func (b *limitedStorage) start(runCh <-chan struct{}, errCh chan<- error) {
 		}
 
 		wg.Wait()
+	}
+}
+
+type cloudCompression struct {
+	base
+	uploader uploader
+}
+
+func newCloudCompression(dir, prefix string, uploader uploader, format *regexp.Regexp, nowFunc nowFunc, tz *time.Location) *cloudCompression {
+	return &cloudCompression{
+		base: base{
+			dir:    dir,
+			prefix: prefix,
+			format: format,
+			tz:     tz,
+			nowFunc: nowFunc,
+		},
+		uploader: uploader,
 	}
 }
 

@@ -169,7 +169,7 @@ func TestCompressAndUploadAfterJuggle(t *testing.T) {
 	nowFunc := createNowFunc(dateSuffix, "2018-01-29")
 
 	cleanUp, dir, err := createFakeLogFiles(
-		randomString(15),
+		randomString(13),
 		uf("2018-01-23", 1),
 		uf("2018-01-25", 1),
 		uf("2018-01-29", 1),
@@ -178,8 +178,6 @@ func TestCompressAndUploadAfterJuggle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	defer cleanUp()
 
 	megabyte = 1
 
@@ -210,7 +208,11 @@ func TestCompressAndUploadAfterJuggle(t *testing.T) {
 
 	j.NotifyOnError(errCh)
 
-	defer j.Close()
+	go func() {
+		for err := range errCh {
+			panic(err)
+		}
+	}()
 
 	prevFile := filepath.Join(dir, fmt.Sprintf("%s-%s.1.log", prefix, "2018-01-29"))
 	nextFile := filepath.Join(dir, fmt.Sprintf("%s-%s.2.log", prefix, "2018-01-29"))
@@ -228,12 +230,6 @@ func TestCompressAndUploadAfterJuggle(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, ok)
 
-	go func() {
-		for err := range errCh {
-			panic(err)
-		}
-	}()
-
 	<-time.After(1 * time.Second)
 
 	assert.NoFileExists(t, gzippedName(prevFile))
@@ -246,6 +242,10 @@ func TestCompressAndUploadAfterJuggle(t *testing.T) {
 	prevFile = filepath.Join(dir, fmt.Sprintf("%s-%s.1.log", prefix, "2018-01-23"))
 	assert.NoFileExists(t, gzippedName(prevFile))
 	assert.NoFileExists(t, prevFile)
+
+	j.Close()
+	<-time.After(2000 * time.Millisecond)
+	cleanUp()
 }
 
 func TestRemoveTooManyBackups(t *testing.T) {
