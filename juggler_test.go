@@ -179,6 +179,8 @@ func TestCompressAndUploadAfterJuggle(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	defer cleanUp()
+
 	megabyte = 1
 
 	uploader, err := cloud.New(cloud.Config{
@@ -206,11 +208,13 @@ func TestCompressAndUploadAfterJuggle(t *testing.T) {
 		withNowFunc(nowFunc),
 	)
 
+	defer j.Close()
+
 	j.NotifyOnError(errCh)
 
 	go func() {
 		for err := range errCh {
-			panic(err)
+			t.Fatal(err)
 		}
 	}()
 
@@ -242,10 +246,6 @@ func TestCompressAndUploadAfterJuggle(t *testing.T) {
 	prevFile = filepath.Join(dir, fmt.Sprintf("%s-%s.1.log", prefix, "2018-01-23"))
 	assert.NoFileExists(t, gzippedName(prevFile))
 	assert.NoFileExists(t, prevFile)
-
-	j.Close()
-	<-time.After(2000 * time.Millisecond)
-	cleanUp()
 }
 
 func TestRemoveTooManyBackups(t *testing.T) {
