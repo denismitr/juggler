@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -27,7 +28,7 @@ func TestParseLogFileMeta(t *testing.T) {
 	}{
 		{
 			name:    "2 days ago single file",
-			dirName: "create_new_file_test",
+			dirName: randomString(14),
 			ago:     -48 * time.Hour,
 			existingFile: func(dir, prefix string, now time.Time, version int) string {
 				return filepath.Join(dir, fmt.Sprintf("test_log-%s.1.log", now.Format(dateSuffix)))
@@ -39,7 +40,7 @@ func TestParseLogFileMeta(t *testing.T) {
 		},
 		{
 			name:    "1 days ago single file with version",
-			dirName: "create_new_file_test",
+			dirName: randomString(14),
 			ago:     -24 * time.Hour,
 			existingFile: func(dir, prefix string, now time.Time, version int) string {
 				return filepath.Join(dir, fmt.Sprintf("test_log-%s.%d.log", now.Format(dateSuffix), version))
@@ -53,9 +54,11 @@ func TestParseLogFileMeta(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			now := time.Now().Add(tc.ago) // log file from some time ago
+			nowFunc := createNowFunc(dateSuffix, "2018-01-30")
+			now := nowFunc().Add(tc.ago) // log file from some time ago
 			dir := makeTestDir(tc.dirName, t)
 			defer os.RemoveAll(dir)
+
 			existingFile := tc.existingFile(dir, tc.prefix, now, tc.version)
 			entry := []byte("logEntry\n")
 
@@ -73,7 +76,7 @@ func TestParseLogFileMeta(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			lf, ok := parseLogFileMeta(dir, fi, tc.prefix, createFormat(tc.prefix), time.UTC)
+			lf, ok := parseLogFileMeta(dir, fi, tc.prefix, createFormat(tc.prefix), nowFunc, time.UTC)
 
 			assert.True(t, ok, "regex could not match filename")
 			assert.Equal(t, tc.version, lf.version)
@@ -115,15 +118,8 @@ func TestParseDiffInDays(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.in, func(t *testing.T) {
-			currentTime = func() time.Time {
-				t, err := time.Parse(testTimeFormat, tc.today)
-				if err != nil {
-					panic(err)
-				}
-				return t
-			}
-
-			days, err := parseDayDiff(tc.in, tc.tz)
+			nowFunc := createNowFunc(testTimeFormat, tc.today)
+			days, err := parseDayDiff(tc.in, nowFunc(), tc.tz)
 			if tc.err == nil {
 				assert.NoError(t, err)
 			}
@@ -139,7 +135,7 @@ func TestScanBackups(t *testing.T) {
 		f := uncompressedIdenticalTestFileFactory(prefix, "fake - log - content")
 
 		cleanUp, dir, err := createFakeLogFiles(
-			"testDir",
+			randomString(14),
 			f("2018-01-22", 0),
 			f("2018-01-23", 0),
 			f("2018-01-25", 0),
@@ -152,15 +148,9 @@ func TestScanBackups(t *testing.T) {
 
 		defer cleanUp()
 
-		currentTime = func() time.Time {
-			t, err := time.Parse(dateSuffix, "2018-01-30")
-			if err != nil {
-				panic(err)
-			}
-			return t
-		}
+		nowFunc := createNowFunc(dateSuffix, "2018-01-30")
 
-		lfs, err := scanBackups(dir, prefix, createFormat(prefix), time.UTC)
+		lfs, err := scanBackups(dir, prefix, createFormat(prefix), nowFunc, time.UTC)
 
 		assert.NoError(t, err)
 		assert.Equal(t, 4, len(lfs), "expected exactly 4 backups found")
@@ -180,7 +170,7 @@ func TestScanBackups(t *testing.T) {
 		cf := compressedIdenticalTestFileFactory(prefix, "compressed fake - log - content")
 
 		cleanUp, dir, err := createFakeLogFiles(
-			"testDir",
+			randomString(14),
 			cf("2018-01-20", 0),
 			cf("2018-01-21", 0),
 			cf("2018-01-22", 0),
@@ -196,15 +186,8 @@ func TestScanBackups(t *testing.T) {
 
 		defer cleanUp()
 
-		currentTime = func() time.Time {
-			t, err := time.Parse(dateSuffix, "2018-01-30")
-			if err != nil {
-				panic(err)
-			}
-			return t
-		}
-
-		lfs, err := scanBackups(dir, prefix, createFormat(prefix), time.UTC)
+		nowFunc := createNowFunc(dateSuffix, "2018-01-30")
+		lfs, err := scanBackups(dir, prefix, createFormat(prefix), nowFunc, time.UTC)
 
 		assert.NoError(t, err)
 		assert.Equal(t, 3, len(lfs), "expected exactly 4 backups found")
@@ -224,7 +207,7 @@ func TestCompression(t *testing.T) {
 		content := "uncompressed fake - log - content"
 		uf := uncompressedIdenticalTestFileFactory(prefix, content)
 
-		dir, err := createTestDir("test_dir")
+		dir, err := createTestDir(randomString(14))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -242,17 +225,24 @@ func TestCompression(t *testing.T) {
 
 		var wg sync.WaitGroup
 		errCh := make(chan error, 10)
+		dstCh := make(chan string)
 
-		wg.Add(1)
-		go compress(file, &wg, errCh, nil)
-		wg.Wait()
-
-		select {
+		wg.Add(2)
+		go compressAndRemove(file, &wg, errCh, dstCh)
+		go func() {
+			defer wg.Done()
+			select {
 			case err := <-errCh:
 				t.Fatal(err)
-			default:
 				break
-		}
+			case dst := <-dstCh:
+				log.Println(dst)
+				assert.Equal(t, dst, gzippedName(file))
+				break
+			}
+		}()
+
+		wg.Wait()
 
 		f, err := os.Open(file + ".gz")
 		if err != nil {

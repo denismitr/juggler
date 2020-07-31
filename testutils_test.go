@@ -3,6 +3,7 @@ package juggler
 import (
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"testing"
@@ -15,6 +16,30 @@ type testLogFile struct {
 	version    int
 	compressed bool
 	content    string
+}
+
+var seededRand *rand.Rand = rand.New(rand.NewSource(time.Now().UnixNano()))
+
+
+const charset = "abcdefghijklmnopqrstuvwxyz" +
+	"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+func randomString(length int) string {
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[seededRand.Intn(len(charset))]
+	}
+	return string(b)
+}
+
+func createNowFunc(layout, value string) nowFunc {
+	return func() time.Time {
+		t, err := time.Parse(layout, value)
+		if err != nil {
+			panic(err)
+		}
+		return t
+	}
 }
 
 func location(name string) *time.Location {

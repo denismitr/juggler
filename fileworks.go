@@ -53,7 +53,7 @@ func gzippedName(file string) string {
 	return file + ".gz"
 }
 
-func parseLogFileMeta(dir string, f os.FileInfo, prefix string, format *regexp.Regexp, tz *time.Location) (logFileMeta, bool) {
+func parseLogFileMeta(dir string, f os.FileInfo, prefix string, format *regexp.Regexp, nowFunc nowFunc, tz *time.Location) (logFileMeta, bool) {
 	if ! strings.HasSuffix(f.Name(), ".log") {
 		return logFileMeta{}, false
 	}
@@ -69,6 +69,8 @@ func parseLogFileMeta(dir string, f os.FileInfo, prefix string, format *regexp.R
 		return logFileMeta{}, false
 	}
 
+	now := nowFunc()
+
 	for i, name := range format.SubexpNames() {
 		if i != 0 && name == "version" && matches[i] != "" {
 			v, _ := strconv.Atoi(matches[i])
@@ -78,7 +80,7 @@ func parseLogFileMeta(dir string, f os.FileInfo, prefix string, format *regexp.R
 		}
 
 		if i != 0 && name == "date" && matches[i] != "" {
-			days, err := parseDayDiff(matches[i], tz)
+			days, err := parseDayDiff(matches[i], now, tz)
 			if err != nil {
 				panic(err) // todo: remove
 			}
@@ -89,14 +91,14 @@ func parseLogFileMeta(dir string, f os.FileInfo, prefix string, format *regexp.R
 	return result, true
 }
 
-func parseDayDiff(date string, tz *time.Location) (days int, err error) {
+func parseDayDiff(date string, now time.Time, tz *time.Location) (days int, err error) {
 	t, err := time.Parse(dateSuffix, date)
 	if err != nil {
 		err = errors.Wrapf(err, "could not parse date %s", date)
 		return
 	}
 
-	now := currentTime().In(tz)
+	now = now.In(tz)
 	days = int(now.Sub(t).Hours() / 24)
 
 	return
@@ -105,6 +107,7 @@ func parseDayDiff(date string, tz *time.Location) (days int, err error) {
 func scanBackups(
 	dir, prefix string,
 	format *regexp.Regexp,
+	nowFunc nowFunc,
 	tz *time.Location,
 ) ([]logFileMeta, error) {
 	if dir == "" {
@@ -123,7 +126,7 @@ func scanBackups(
 			continue
 		}
 
-		if logFile, ok := parseLogFileMeta(dir, files[i], prefix, format, tz); ok {
+		if logFile, ok := parseLogFileMeta(dir, files[i], prefix, format, nowFunc, tz); ok {
 			result = append(result, logFile)
 		}
 	}
@@ -138,7 +141,7 @@ func scanBackups(
 	return result, nil
 }
 
-func compress(src string, wg *sync.WaitGroup, errCh chan<- error, nextCh chan string) {
+func compressAndRemove(src string, wg *sync.WaitGroup, errCh chan<- error, nextCh chan string) {
 	defer wg.Done()
 	f, err := os.Open(src)
 	if err != nil {

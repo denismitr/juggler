@@ -2,6 +2,7 @@ package juggler
 
 import (
 	"fmt"
+	"github.com/denismitr/juggler/cloud"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"log"
@@ -11,18 +12,14 @@ import (
 	"time"
 )
 
-func setTestNow() time.Time {
-	return time.Now()
-}
-
 func TestCreateNewFile(t *testing.T) {
-	dir := makeTestDir("create_new_file_test", t)
+	dir := makeTestDir(randomString(20), t)
 	defer os.RemoveAll(dir)
 
-	currentTime = setTestNow
-	now := setTestNow()
+	nowFunc := createNowFunc(dateSuffix, "2020-01-01")
+	now := nowFunc()
 
-	j := New("test_log", dir)
+	j := New("test_log", dir, withNowFunc(nowFunc))
 	defer j.Close()
 
 	b := []byte("test log")
@@ -38,10 +35,10 @@ func TestCreateNewFile(t *testing.T) {
 }
 
 func TestAppendToExistingFile(t *testing.T) {
-	currentTime = setTestNow
-	now := setTestNow()
+	nowFunc := createNowFunc(dateSuffix, "2020-01-01")
+	now := nowFunc()
 
-	dir := makeTestDir("create_new_file_test", t)
+	dir := makeTestDir(randomString(15), t)
 	defer os.RemoveAll(dir)
 
 	existingFile := filepath.Join(dir, fmt.Sprintf("test_log-%s.1.log", now.Format(dateSuffix)))
@@ -55,7 +52,7 @@ func TestAppendToExistingFile(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, ok)
 
-	j := New("test_log", dir)
+	j := New("test_log", dir, withNowFunc(nowFunc))
 	defer j.Close()
 
 	nextEntry := []byte("nextEntry\n")
@@ -70,14 +67,13 @@ func TestAppendToExistingFile(t *testing.T) {
 }
 
 func TestJugglingDuringWrite(t *testing.T) {
-	currentTime = setTestNow
-	now := setTestNow()
+	nowFunc := createNowFunc(dateSuffix, "2018-01-30")
 	megabyte = 1
 
-	dir := makeTestDir("create_new_file_test", t)
+	dir := makeTestDir(randomString(15), t)
 	defer os.RemoveAll(dir)
 
-	existingFile := filepath.Join(dir, fmt.Sprintf("test_log-%s.1.log", now.Format(dateSuffix)))
+	existingFile := filepath.Join(dir, fmt.Sprintf("test_log-%s.1.log", nowFunc().Format(dateSuffix)))
 	entry := []byte("logEntry\n")
 	err := ioutil.WriteFile(existingFile, entry, 0644)
 	if err != nil {
@@ -88,10 +84,10 @@ func TestJugglingDuringWrite(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, ok)
 
-	j := New("test_log", dir, WithMaxMegabytes(17))
+	j := New("test_log", dir, WithMaxMegabytes(17), withNowFunc(nowFunc))
 	defer j.Close()
 
-	nextFile := filepath.Join(dir, fmt.Sprintf("test_log-%s.2.log", now.Format(dateSuffix)))
+	nextFile := filepath.Join(dir, fmt.Sprintf("test_log-%s.2.log", nowFunc().Format(dateSuffix)))
 	nextEntry := []byte("next log too big")
 	n, err := j.Write(nextEntry)
 	assert.NoError(t, err)
@@ -107,8 +103,10 @@ func TestCompressAfterJuggle(t *testing.T) {
 	content := "uncompressed fake - log - content"
 	uf := uncompressedIdenticalTestFileFactory(prefix, content)
 
+	nowFunc := createNowFunc(dateSuffix, "2018-01-29")
+
 	cleanUp, dir, err := createFakeLogFiles(
-		"testDir",
+		randomString(15),
 		uf("2018-01-23", 1),
 		uf("2018-01-25", 1),
 		uf("2018-01-29", 1),
@@ -122,15 +120,15 @@ func TestCompressAfterJuggle(t *testing.T) {
 
 	megabyte = 1
 
-	currentTime = func() time.Time {
-		t, err := time.Parse(dateSuffix, "2018-01-29")
-		if err != nil {
-			panic(err)
-		}
-		return t
-	}
+	j := New(
+		prefix,
+		dir,
+		WithCompression(),
+		WithMaxMegabytes(17),
+		WithNextTick(500 * time.Millisecond),
+		withNowFunc(nowFunc),
+	)
 
-	j := New(prefix, dir, WithCompression(), WithMaxMegabytes(17), WithNextTick(500 * time.Millisecond))
 	defer j.Close()
 
 	prevFile := filepath.Join(dir, fmt.Sprintf("%s-%s.1.log", prefix, "2018-01-29"))
@@ -140,6 +138,7 @@ func TestCompressAfterJuggle(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, len(nextEntry), n)
+
 	ok, err := expectFileToContain(nextFile, nextEntry)
 	assert.NoError(t, err)
 	assert.True(t, ok)
@@ -162,14 +161,103 @@ func TestCompressAfterJuggle(t *testing.T) {
 	assert.NoFileExists(t, prevFile)
 }
 
+func TestCompressAndUploadAfterJuggle(t *testing.T) {
+	prefix := "test_log"
+	content := "uncompressed fake - log - content"
+	uf := uncompressedIdenticalTestFileFactory(prefix, content)
+
+	nowFunc := createNowFunc(dateSuffix, "2018-01-29")
+
+	cleanUp, dir, err := createFakeLogFiles(
+		randomString(13),
+		uf("2018-01-23", 1),
+		uf("2018-01-25", 1),
+		uf("2018-01-29", 1),
+	)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer cleanUp()
+
+	megabyte = 1
+
+	cloudUploader, err := cloud.New(cloud.Config{
+		Id: "minio",
+		Secret: "minio123",
+		Bucket: "testbucket",
+		Endpoint: "http://127.0.0.1:9001",
+		Acl: "public-read",
+		Region: "us-east-1",
+		NoSSL: true,
+	})
+
+	if err != nil {
+		panic(err)
+	}
+
+	errCh := make(chan error)
+
+	j := New(
+		prefix,
+		dir,
+		WithCompressionAndCloudUploader(cloudUploader),
+		WithMaxMegabytes(17),
+		WithNextTick(500 * time.Millisecond),
+		withNowFunc(nowFunc),
+	)
+
+	defer j.Close()
+
+	j.NotifyOnError(errCh)
+
+	go func() {
+		for err := range errCh {
+			t.Fatal(err)
+		}
+	}()
+
+	prevFile := filepath.Join(dir, fmt.Sprintf("%s-%s.1.log", prefix, "2018-01-29"))
+	nextFile := filepath.Join(dir, fmt.Sprintf("%s-%s.2.log", prefix, "2018-01-29"))
+	nextEntry := []byte("next log too big")
+	n, err := j.Write(nextEntry)
+
+	assert.NoError(t, err)
+	assert.Equal(t, len(nextEntry), n)
+
+	ok, err := expectFileToContain(nextFile, nextEntry)
+	assert.NoError(t, err)
+	assert.True(t, ok)
+
+	ok, err = expectFileToContain(prevFile, []byte(content))
+	assert.NoError(t, err)
+	assert.True(t, ok)
+
+	<-time.After(1 * time.Second)
+
+	assert.NoFileExists(t, gzippedName(prevFile))
+	assert.NoFileExists(t, prevFile)
+
+	prevFile = filepath.Join(dir, fmt.Sprintf("%s-%s.1.log", prefix, "2018-01-25"))
+	assert.NoFileExists(t, gzippedName(prevFile))
+	assert.NoFileExists(t, prevFile)
+
+	prevFile = filepath.Join(dir, fmt.Sprintf("%s-%s.1.log", prefix, "2018-01-23"))
+	assert.NoFileExists(t, gzippedName(prevFile))
+	assert.NoFileExists(t, prevFile)
+}
+
 func TestRemoveTooManyBackups(t *testing.T) {
 	prefix := "test_log"
 	uf := uncompressedIdenticalTestFileFactory(prefix, "uncompressed fake - log - content")
 	cf := compressedIdenticalTestFileFactory(prefix, "compressed fake - log - content")
 
-	t.Run("no versions and not compressed files", func(t *testing.T) {
+	nowFunc := createNowFunc(dateSuffix, "2018-01-30")
+
+	t.Run("no versions and no compressed files", func(t *testing.T) {
 		cleanUp, dir, err := createFakeLogFiles(
-			"testDir",
+			randomString(15),
 			uf("2018-01-16", 1),
 			uf("2018-01-17", 1),
 			uf("2018-01-18", 1),
@@ -189,15 +277,7 @@ func TestRemoveTooManyBackups(t *testing.T) {
 
 		defer cleanUp()
 
-		currentTime = func() time.Time {
-			t, err := time.Parse(dateSuffix, "2018-01-30")
-			if err != nil {
-				panic(err)
-			}
-			return t
-		}
-
-		j := New(prefix, dir, WithMaxBackups(5), WithNextTick(250 * time.Millisecond))
+		j := New(prefix, dir, WithMaxBackups(5), WithNextTick(250 * time.Millisecond), withNowFunc(nowFunc))
 		defer j.Close()
 
 		logger := log.New(j, "foo", log.LstdFlags)
@@ -221,7 +301,7 @@ func TestRemoveTooManyBackups(t *testing.T) {
 
 	t.Run("no versions and compressed files should be left untouched", func(t *testing.T) {
 		cleanUp, dir, err := createFakeLogFiles(
-			"testDir",
+			randomString(14),
 			uf("2018-01-16", 1),
 			cf("2018-01-17", 1),
 			uf("2018-01-18", 1),
@@ -241,15 +321,7 @@ func TestRemoveTooManyBackups(t *testing.T) {
 
 		defer cleanUp()
 
-		currentTime = func() time.Time {
-			t, err := time.Parse(dateSuffix, "2018-01-30")
-			if err != nil {
-				panic(err)
-			}
-			return t
-		}
-
-		j := New(prefix, dir, WithMaxBackups(5), WithNextTick(250 * time.Millisecond))
+		j := New(prefix, dir, WithMaxBackups(5), WithNextTick(250 * time.Millisecond), withNowFunc(nowFunc))
 		defer j.Close()
 
 		<-time.After(800 * time.Millisecond)
@@ -276,7 +348,7 @@ func TestRemoveTooManyBackups(t *testing.T) {
 
 	t.Run("today file is not counted", func(t *testing.T) {
 		cleanUp, dir, err := createFakeLogFiles(
-			"testDir",
+			randomString(14),
 			uf("2018-01-22", 1),
 			uf("2018-01-23", 1),
 			uf("2018-01-25", 1),
@@ -290,15 +362,7 @@ func TestRemoveTooManyBackups(t *testing.T) {
 
 		defer cleanUp()
 
-		currentTime = func() time.Time {
-			t, err := time.Parse(dateSuffix, "2018-01-30")
-			if err != nil {
-				panic(err)
-			}
-			return t
-		}
-
-		j := New(prefix, dir, WithMaxBackups(5), WithNextTick(250 * time.Millisecond))
+		j := New(prefix, dir, WithMaxBackups(5), WithNextTick(250 * time.Millisecond), withNowFunc(nowFunc))
 		defer j.Close()
 
 		logger := log.New(j, "foo", log.LstdFlags)
